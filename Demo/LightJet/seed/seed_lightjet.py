@@ -43,6 +43,7 @@ sys.path.insert(0, str(HERE.parent / "model"))
 
 import lightjet_data as D                                            # noqa: E402
 import lightjet_documents as DOC                                     # noqa: E402
+import lightjet_fleet as FLEET                                       # noqa: E402
 import lightjet_items as IT                                          # noqa: E402
 import lightjet_links as LN                                          # noqa: E402
 import lightjet_materials as MAT                                     # noqa: E402
@@ -226,6 +227,7 @@ def all_records() -> list[dict]:
     return (
         D.VENDOR_REPS
         + MAT.MATERIALS
+        + FLEET.AIRCRAFT
         + D.ITEMS_21 + IT.ITEMS_23 + IT.ITEMS_25
         + DOC.ALL_DOCUMENTS
         + REQ.REQUIREMENTS
@@ -354,8 +356,8 @@ def validate(registry: dict[str, dict], notes: list[str] | None = None) -> list[
             if value and value not in usernames and "." in str(value):
                 problems.append(f"{where}: {field} '{value}' is not a seeded user.")
 
-    # Bill of materials.
-    for link in ST.ALL_BOM:
+    # Bill of materials, including each aeroplane's as-built configuration.
+    for link in ST.ALL_BOM + FLEET.AS_BUILT:
         for end in ("parent", "child"):
             if link[end] not in by_pn:
                 problems.append(f"BOM {link['parent']} -> {link['child']}: "
@@ -977,7 +979,7 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
             f"{', '.join(sorted(set(unresolved))[:3])}")
 
     # ── Bill of materials ───────────────────────────────────────────────────
-    for link in ST.ALL_BOM:
+    for link in ST.ALL_BOM + FLEET.AS_BUILT:
         link_id = deterministic_id(f"bom:{link['parent']}>{link['child']}:"
                                    f"{link.get('find')}")
         body = {

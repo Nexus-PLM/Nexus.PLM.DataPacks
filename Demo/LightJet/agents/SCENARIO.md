@@ -122,3 +122,102 @@ Design check and airworthiness both have to approve before the workflow sets Rel
 rejection returns it to the originator with your comment on the trail. If you are asked to
 approve something whose evidence does not exist, reject it and say why — that is the whole
 reason the step exists.
+
+---
+
+# Wave 3 — an in-service problem that forces a design AND a material change
+
+This is the one that has to hold together end to end, because it is the hardest thing a
+PLM system is asked to do: a fault found on a delivered aeroplane, traced to a cause that
+is BOTH a design detail and a material choice, changed through the proper route, re-tested
+where the change invalidated the evidence, re-approved by the people whose approval it
+invalidated, and told to the fleet — with the whole chain navigable afterwards.
+
+Nothing here is pre-written. The objects below are the starting conditions; what the
+record ends up saying is whatever the roles decide it says.
+
+## The report
+
+**`f.mbeki` raises it.** Two of the three delivered aeroplanes show corrosion products at
+the pack bay firewall penetration after roughly 400 flight hours — at the interface
+between the titanium seal plate `LSS-21-0014` and the surrounding aluminium structure.
+Operators found it at the 400-hour inspection. No flight has been affected and nothing has
+failed, but it is the second aircraft, and the first was dismissed as a one-off.
+
+Raise it as a `ProblemReport`, properly: what was found, where, by whom, on which
+aeroplanes, detection phase, severity, and the affected item. Do not diagnose it — that is
+engineering's job, and a problem report that contains its own conclusion usually contains
+the wrong one.
+
+## What investigation should find
+
+The roles work this out between them; it is written here so the scenario has a true answer
+to converge on, not so anyone can skip to it.
+
+The titanium plate and the 2024 aluminium structure are a galvanic couple. The joint is
+sealed with `LSS-CM-0001` (polysulphide, `LSS-MAT-00014`, AMS 3277 Class B-2), whose max
+service temperature is **120 °C**. The pack bay runs hotter than that at the penetration
+during bleed operation. The sealant degrades, stops being a barrier, moisture reaches the
+couple, and the aluminium corrodes.
+
+So neither change works alone:
+
+* **A material change.** AMS 3277 is the wrong sealant for this location. A
+  high-temperature sealant is needed, with its own qualification, allowables position,
+  shelf life, storage and approved sources — a new `Material` object, not an edit to the
+  old one. The old sealant stays qualified for everywhere else it is used.
+* **A design change.** The new sealant needs a different joint: a sealing land and an
+  isolation detail that separates the two metals rather than relying on the sealant alone.
+  That is a new revision of `LSS-21-0014` and of its drawing.
+
+## What each role owns
+
+1. **`f.mbeki`** — raise the problem report. Later: assess fleet impact and prepare the
+   service bulletin for the two affected aeroplanes and the third.
+2. **`h.okafor`** — convene the board, disposition the change request, judge it against
+   cost, weight, schedule and certification.
+3. **`m.sandoval`** — the design change: revision B of `LSS-21-0014` and its drawing, with
+   the isolation detail and the new sealing land.
+4. **`y.cheng`** — the material change: source the new sealant, its approved sources, its
+   obsolescence and counterfeit position, and what it does to lead time.
+5. **`t.brennan`** — the process: `LSS-PS-0006` governs sealant application and its
+   parameters no longer fit. Say what changes.
+6. **`p.lindqvist`** — whether the isolation detail changes the joint structurally, and
+   whether corrosion already found on two aeroplanes affects the substantiation.
+7. **`r.achebe`** — which requirements and compliance items this touches, and which trace
+   links go suspect when the plate is revised.
+8. **`k.tanaka`** — a nonconformance against the two affected aeroplanes, its disposition,
+   and what first article the revised plate needs.
+9. **`c.delacroix`** — the re-approval. `LSS-CERT-COMP-006` (flammable fluid fire
+   protection at this penetration) rests on a firewall penetration test run on the OLD
+   joint with the OLD sealant. Decide whether that evidence still stands.
+
+## What "fully documented" means here
+
+Not prose in a discussion thread. Every one of these, as objects and links:
+
+* the problem report, linked to the affected item;
+* a change request that names the problem report as its source, and a change order with
+  effectivity that names the change request;
+* the new material object, and the part referencing it instead of the old one;
+* the revised part and drawing, released through the approval route, with the old
+  revision Superseded rather than deleted;
+* the re-run test evidence, or a recorded decision that the existing evidence still
+  stands and why;
+* a change notice to the functions that have to act;
+* a service bulletin with effectivity, compliance period, labour and kit;
+* a nonconformance covering the aeroplanes already affected.
+
+## The traceability test
+
+When it is finished, the administrator will ask the system one question and expect the
+answer in clicks, not prose:
+
+> *Starting from the corrosion found on aeroplane 002, show me every object that changed
+> because of it, who approved each change and on what basis, and what the fleet was told.*
+
+Build the record so that question answers itself. If some link in that chain cannot be
+made because the system has nowhere to put it, that is a `missing` finding and it is more
+valuable than the workaround — report it and say which link broke.
+
+Thread: **`NX-200 ATA 21 firewall penetration corrosion`**.

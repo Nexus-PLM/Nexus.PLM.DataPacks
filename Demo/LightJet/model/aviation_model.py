@@ -413,6 +413,11 @@ NUMBERING = [
         [_seg("prefix", "LSS-PS"), _seg("separator", "-"), _seg("counter", digits=4)],
     ),
     schema(
+        f"{PREFIX}LssAircraft",
+        "Individual airframes, by manufacturer serial number, e.g. LSS-AC-002.",
+        [_seg("prefix", "LSS-AC"), _seg("separator", "-"), _seg("counter", digits=3)],
+    ),
+    schema(
         f"{PREFIX}LssMaterial",
         "Qualified materials, e.g. LSS-MAT-00009.",
         [_seg("prefix", "LSS-MAT"), _seg("separator", "-"), _seg("counter", digits=5)],

@@ -573,6 +573,41 @@ CONCRETE_ITEM_TYPES = [
              default=False),
        ]),
 
+    ty("Aircraft", "Aircraft",
+       "One individual aeroplane, by manufacturer serial number. The type design says "
+       "what an NX-200 is; this says what THIS one is - which revision of each "
+       "installation it left the factory with, who operates it, how many hours it has "
+       "flown and which bulletins are outstanding against it. "
+       "It is not type design data: revising an aircraft record does not touch the type "
+       "certificate. Its as-built structure is ordinary bill-of-materials links PINNED "
+       "to the revision actually fitted, because an as-built that follows the latest "
+       "drawing answers the one question it must never answer.",
+       t("NonTypeDesignItemBase"), numbering=f"{PREFIX}LssAircraft",
+       attributes=[
+           a("manufacturerSerialNumber", "Manufacturer Serial Number", required=True),
+           a("registration", "Registration"),
+           a("operator", "Operator"),
+           a("deliveryDate", "Delivery Date", kind="Date"),
+           a("aircraftStatus", "Status",
+             lov=["In build", "Flight test - experimental", "In service",
+                  "In maintenance", "Stored", "Withdrawn from use", "Written off"],
+             required=True, default="In build"),
+           a("certificationStatus", "Certification Status",
+             lov=["Not type certificated; permit to fly",
+                  "Permit to fly pending type certificate",
+                  "Certificate of airworthiness", "Restricted certificate"],
+             default="Not type certificated; permit to fly"),
+           a("buildStandard", "Build Standard"),
+           a("baseLocation", "Base"),
+           a("totalFlightHours", "Total Flight Hours", kind="Number", unit="FH"),
+           a("totalCycles", "Total Cycles", kind="Number", unit="FC"),
+           a("lastInspectionDate", "Last Inspection", kind="Date"),
+           # Free text for now, and deliberately so: there is no bulletin-compliance
+           # record in the product, which the customer support role reported as a
+           # Critical gap. This field is the workaround, not the answer.
+           a("openBulletins", "Outstanding Service Bulletins"),
+       ]),
+
     ty("Tooling", "Tooling and Ground Support Equipment",
        "Production tooling, inspection fixtures, test rigs and ground support equipment. Not "
        "type design data, but a check fixture whose calibration has lapsed invalidates the "

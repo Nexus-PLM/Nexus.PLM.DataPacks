@@ -147,6 +147,7 @@ OWNING_GROUP = {
     "VendorRep": "LSS Supply Chain",
     "Tooling": "LSS Manufacturing Engineering",
     "Consumable": "LSS Manufacturing Engineering",
+    "Aircraft": "LSS Customer Support",
     "Drawing": "LSS Design Engineering",
     "Specification": "LSS Systems Engineering",
     "Icd": "LSS Systems Engineering",

@@ -57,7 +57,10 @@ PROJECTS = [
         "memberGroups": ["LSS Design Engineering", "LSS Systems Engineering",
                          "LSS Stress and Loads", "LSS Manufacturing Engineering",
                          "LSS Supply Chain",
-                         "LSS Programme Management", "LSS Project Management"],
+                         "LSS Programme Management", "LSS Project Management",
+                         # The fleet role has to read what is installed before it can
+                         # say whether a change reaches a delivered aeroplane.
+                         "LSS Customer Support"],
         "privilegedGroups": ["LSS Design Engineering"],
     },
     {
