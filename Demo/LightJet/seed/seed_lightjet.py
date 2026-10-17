@@ -43,6 +43,7 @@ sys.path.insert(0, str(HERE.parent / "model"))
 
 import lightjet_data as D                                            # noqa: E402
 import lightjet_documents as DOC                                     # noqa: E402
+import lightjet_evidence as EV                                       # noqa: E402
 import lightjet_fleet as FLEET                                       # noqa: E402
 import lightjet_items as IT                                          # noqa: E402
 import lightjet_links as LN                                          # noqa: E402
@@ -230,6 +231,7 @@ def all_records() -> list[dict]:
         + FLEET.AIRCRAFT
         + D.ITEMS_21 + IT.ITEMS_23 + IT.ITEMS_25
         + DOC.ALL_DOCUMENTS
+        + EV.EVIDENCE
         + REQ.REQUIREMENTS
         + QA.FAI_REPORTS + QA.NCRS + QA.COCS + QA.ARCS
         + QA.SUPPLIER_RECORDS + QA.PROCESS_SPECS + QA.SERVICE_BULLETINS
@@ -386,6 +388,15 @@ def validate(registry: dict[str, dict], notes: list[str] | None = None) -> list[
             if link[end] not in by_pn:
                 problems.append(f"Trace {link['source']} -> {link['target']}: "
                                 f"{end} does not exist.")
+
+    for source, target, _note in EV.EVIDENCE_LINKS:
+        for end, pn in (("source", source), ("target", target)):
+            if pn not in by_pn:
+                problems.append(f"Evidence link {source} -> {target}: {end} does not "
+                                f"exist.")
+    for pn in EV.EVIDENCE_REF_UPDATES:
+        if pn not in by_pn:
+            problems.append(f"Evidence reference update: {pn} does not exist.")
 
     # Object references: a part to its drawing, its specifications, its material and
     # its evidence. Both ends must exist, and a pin must name a revision the target has.
@@ -1012,6 +1023,10 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
 
     by_pn_all = {r["pn"]: r for r in records}
     made, already = 0, 0
+    for source, target, note in EV.EVIDENCE_LINKS:
+        result = add_reference(source, target, LN.RELATED, LN.RELEASED, None, note)
+        already += 1 if result == "duplicate" else 0
+        made += 0 if result == "duplicate" else 1
     for link in LN.ALL_REFERENCES:
         result = add_reference(link["source"], link["target"], link["kind"],
                                link["rule"], link.get("pin"), link.get("note"))
@@ -1030,6 +1045,13 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
         already += 1 if result == "duplicate" else 0
         made += 0 if result == "duplicate" else 1
     say(f"object references: {made} created, {already} already present")
+
+    for pn, refs in EV.EVIDENCE_REF_UPDATES.items():
+        latest = (by_pn_all[pn].get("history") or [("A", None)])[-1][0]
+        engine.patch(f"/api/plmobjects/{ids[pn]}/revisions/"
+                     f"{revision_ids[(pn, latest)]}/attributes",
+                     {"evidenceDocumentRefs": refs})
+    say(f"compliance evidence references repointed: {len(EV.EVIDENCE_REF_UPDATES)}")
 
     # ── Requirement value attributes, and the text that uses them ───────────
     # A value attribute is the number held once, on the requirement that owns it. The

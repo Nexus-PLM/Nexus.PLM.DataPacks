@@ -151,7 +151,13 @@ OWNING_GROUP = {
     "Drawing": "LSS Design Engineering",
     "Specification": "LSS Systems Engineering",
     "Icd": "LSS Systems Engineering",
-    "ComplianceReport": "LSS Airworthiness and Certification",
+    # NOT airworthiness. A compliance item is EVIDENCE, and the group that accepts
+    # evidence must not be the group that authors it. The FAA DER agent found she
+    # could edit, delete and transition every compliance item she was there to
+    # judge - and demonstrated it by rewriting one. Systems engineering produces
+    # the substantiation; airworthiness reads it, and accepts or refuses it through
+    # the transition rules, which is the only power it needs.
+    "ComplianceReport": "LSS Systems Engineering",
     "QualTestPlan": "LSS Systems Engineering",
     "QualTestReport": "LSS Systems Engineering",
     "SafetyAssessment": "LSS Systems Engineering",

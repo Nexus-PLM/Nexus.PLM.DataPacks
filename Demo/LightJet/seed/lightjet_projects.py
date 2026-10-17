@@ -60,7 +60,13 @@ PROJECTS = [
                          "LSS Programme Management", "LSS Project Management",
                          # The fleet role has to read what is installed before it can
                          # say whether a change reaches a delivered aeroplane.
-                         "LSS Customer Support"],
+                         "LSS Customer Support",
+                         # And the signatory has to read the type design data it signs.
+                         # The DER was 403 on every object she was there to approve.
+                         "LSS Airworthiness and Certification",
+                         # Quality's own first article records are written against these
+                         # parts; it was 403 on every one of them.
+                         "LSS Quality Assurance", "LSS Material Review Board"],
         "privilegedGroups": ["LSS Design Engineering"],
     },
     {
@@ -75,7 +81,8 @@ PROJECTS = [
         "status": "Active",
         "memberGroups": ["LSS Design Engineering", "LSS Customer Support",
                          "LSS Quality Assurance",
-                         "LSS Programme Management", "LSS Project Management"],
+                         "LSS Programme Management", "LSS Project Management",
+                         "LSS Airworthiness and Certification"],
         "privilegedGroups": ["LSS Customer Support"],
     },
 ]

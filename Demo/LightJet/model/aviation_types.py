@@ -171,6 +171,7 @@ NON_TYPE_DESIGN_ITEM_ATTRS = [
 ]
 
 DOC_BASE_ATTRS = [
+    a("programmeCode", "Programme", lov=PROGRAMMES, default="NX-200"),
     # Which chapter the document belongs to. An item carries this through the item base;
     # a document had no equivalent, which meant the compliance board could not be filtered
     # by system - the first thing a chief engineer asks it to do.
