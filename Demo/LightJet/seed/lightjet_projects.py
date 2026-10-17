@@ -37,7 +37,11 @@ PROJECTS = [
         "type": "Internal",
         "status": "Active",
         "memberGroups": ["LSS Airworthiness and Certification", "LSS Systems Engineering",
-                         "LSS Design Engineering", "LSS Stress and Loads"],
+                         "LSS Design Engineering", "LSS Stress and Loads",
+                         # Without these two the programme and project managers were 403
+                         # on every compliance item and every change they are
+                         # accountable for - found by the project manager agent.
+                         "LSS Programme Management", "LSS Project Management"],
         "privilegedGroups": ["LSS Airworthiness and Certification"],
     },
     {
@@ -52,7 +56,8 @@ PROJECTS = [
         "status": "Active",
         "memberGroups": ["LSS Design Engineering", "LSS Systems Engineering",
                          "LSS Stress and Loads", "LSS Manufacturing Engineering",
-                         "LSS Supply Chain"],
+                         "LSS Supply Chain",
+                         "LSS Programme Management", "LSS Project Management"],
         "privilegedGroups": ["LSS Design Engineering"],
     },
     {
@@ -66,7 +71,8 @@ PROJECTS = [
         "type": "External",
         "status": "Active",
         "memberGroups": ["LSS Design Engineering", "LSS Customer Support",
-                         "LSS Quality Assurance"],
+                         "LSS Quality Assurance",
+                         "LSS Programme Management", "LSS Project Management"],
         "privilegedGroups": ["LSS Customer Support"],
     },
 ]

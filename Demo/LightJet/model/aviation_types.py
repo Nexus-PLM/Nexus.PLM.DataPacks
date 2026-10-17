@@ -1262,49 +1262,63 @@ CONCRETE_REQ_TYPES = [
 # of its allowables, whether it is qualified for THIS programme, and the storage and
 # out-time controls that make a composite part conform or not.
 
+MATERIAL_BASE_ATTRS = [
+    a("programmeCode", "Programme", lov=PROGRAMMES, default="NX-200"),
+    a("materialForm", "Form",
+      lov=["Plate", "Sheet", "Bar", "Tube", "Extrusion", "Forging", "Casting",
+           "Prepreg", "Core", "Film adhesive", "Wire"]),
+    # The single most consequential field here. A-basis is the value 99 percent of the
+    # population exceeds with 95 percent confidence and is required for a single load
+    # path; B-basis is 90/95 and is permitted where failure would transfer load to
+    # another member; S-basis is the specification minimum with no statistical basis at
+    # all. "Typical" is not a design allowable, and a part substantiated against typical
+    # values is not substantiated.
+    a("allowablesBasis", "Allowables Basis",
+      lov=["A-basis", "B-basis", "S-basis", "Typical values only", "Not established"],
+      required=True, default="Not established"),
+    a("allowablesSource", "Allowables Source"),
+    a("qualificationStatus", "Qualification Status",
+      lov=["Qualified", "Under qualification", "Not qualified",
+           "Qualification lapsed", "Obsolete"], required=True,
+      default="Not qualified"),
+    a("governingSpecification", "Governing Specification"),
+    a("procurementSpecification", "Procurement Specification"),
+    a("approvedSources", "Approved Sources"),
+    a("nadcapProcessRequired", "NADCAP Accredited Processing Required", kind="Bool",
+      default=False),
+    a("weldable", "Weldable", kind="Bool", default=False),
+    a("corrosionResistance", "Corrosion Behaviour"),
+    a("flammabilityRating", "Flammability Rating"),
+    a("restrictedSubstances", "Restricted Substances (REACH / RoHS)"),
+    a("shelfLifeMonths", "Shelf Life", kind="Number", unit="months"),
+    a("storageRequirement", "Storage and Out-Time Requirement"),
+    a("batchTraceabilityRequired", "Batch Traceability Required", kind="Bool",
+      default=True),
+]
+
+ABSTRACT_MATERIAL_BASE = ty(
+    "MaterialBase", "Light Speed Systems Material Base",
+    "Abstract base for every material qualified, or being qualified, for the NX-200. "
+    "The out-of-the-box MaterialBase already carries the mechanical and thermal property "
+    "set; what it does not carry is the half that decides whether a material may be used "
+    "on a certified aeroplane at all - the statistical basis of its allowables, whether "
+    "it is qualified for THIS programme, and the storage and out-time controls that make "
+    "a composite part conform or not. Those live here so that a later split into metals, "
+    "composites and consumables shares them rather than repeating them.",
+    "MaterialBase", abstract=True, attributes=MATERIAL_BASE_ATTRS,
+    lifecycle=states(TYPE_DESIGN_STATES))
+
 CONCRETE_MATERIAL_TYPES = [
     ty("Material", "Material",
        "A material qualified, or being qualified, for the NX-200. Holding materials as "
        "objects rather than as text on a part is what lets the questions be asked: which "
        "parts use a material whose qualification lapsed, what the stress case's allowables "
        "basis actually was, and what a restricted-substance change would touch.",
-       "MaterialBase", numbering=f"{PREFIX}LssMaterial",
-       lifecycle=states(TYPE_DESIGN_STATES),
+       t("MaterialBase"), numbering=f"{PREFIX}LssMaterial",
        actions=[RELEASE_ACTION],
-       attributes=[
-           a("programmeCode", "Programme", lov=PROGRAMMES, default="NX-200"),
-           a("materialForm", "Form",
-             lov=["Plate", "Sheet", "Bar", "Tube", "Extrusion", "Forging", "Casting",
-                  "Prepreg", "Core", "Film adhesive", "Wire"]),
-           # The single most consequential field here. A-basis is the value 99 percent of
-           # the population exceeds with 95 percent confidence and is required for a
-           # single load path; B-basis is 90/95 and is permitted where failure would
-           # transfer load to another member; S-basis is the specification minimum with
-           # no statistical basis at all. "Typical" is not a design allowable and a part
-           # substantiated against it is not substantiated.
-           a("allowablesBasis", "Allowables Basis",
-             lov=["A-basis", "B-basis", "S-basis", "Typical values only",
-                  "Not established"], required=True, default="Not established"),
-           a("allowablesSource", "Allowables Source"),
-           a("qualificationStatus", "Qualification Status",
-             lov=["Qualified", "Under qualification", "Not qualified",
-                  "Qualification lapsed", "Obsolete"], required=True,
-             default="Not qualified"),
-           a("governingSpecification", "Governing Specification"),
-           a("procurementSpecification", "Procurement Specification"),
-           a("approvedSources", "Approved Sources"),
-           a("nadcapProcessRequired", "NADCAP Accredited Processing Required",
-             kind="Bool", default=False),
-           a("weldable", "Weldable", kind="Bool", default=False),
-           a("corrosionResistance", "Corrosion Behaviour"),
-           a("flammabilityRating", "Flammability Rating"),
-           a("restrictedSubstances", "Restricted Substances (REACH / RoHS)"),
-           a("shelfLifeMonths", "Shelf Life", kind="Number", unit="months"),
-           a("storageRequirement", "Storage and Out-Time Requirement"),
-           a("batchTraceabilityRequired", "Batch Traceability Required", kind="Bool",
-             default=True),
-       ]),
+       attributes=[]),
 ]
 
-ALL_TYPES = (ABSTRACT_TYPES + CONCRETE_ITEM_TYPES + CONCRETE_DOC_TYPES
+ALL_TYPES = (ABSTRACT_TYPES + [ABSTRACT_MATERIAL_BASE]
+             + CONCRETE_ITEM_TYPES + CONCRETE_DOC_TYPES
              + CONCRETE_REQ_TYPES + CONCRETE_MATERIAL_TYPES)

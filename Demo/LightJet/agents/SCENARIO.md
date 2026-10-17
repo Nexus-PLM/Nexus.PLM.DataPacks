@@ -65,3 +65,60 @@ than smoothed over. A well-argued rejection is a better outcome than an approval
 could defend.
 
 Report every security, usability and missing-functionality finding as you go.
+
+---
+
+# Wave 2 — the change processes themselves
+
+Wave 1 established the position on the scoop. Wave 2 exercises the design and engineering
+change processes a certified programme actually runs, on the data wave 1 left behind.
+
+An approved revision never moves backwards. That is not a limitation to work around, it is
+the point: you do not un-release a drawing that aeroplanes were built to. The legitimate
+moves are all here, and each role runs the ones that belong to it.
+
+## The six drills
+
+**1. Revise and re-release.** `LSS-21-0004` is at revision B, Released. Raise revision C
+through the proper route: revise the object, change what the change requires, submit for
+release, and let the approval route set Released. The old revision becomes Superseded, not
+deleted — parts built to it are in service.
+
+**2. Re-run an invalidated test.** `LSS-F-00010` went to revision B with the swivel
+interlock, and the dynamic test report `LSS-CERT-QUAL-002` is still in Airworthiness
+Sign-off. Decide whether the existing test credit still stands, and if it does not, say
+what has to be re-run and against which configuration.
+
+**3. New part number, and supersede.** The ram air scoop changes from glass to carbon. Is
+that a revision of `LSS-21-0012` or a new part number? Make the call on the
+interchangeability rule — one-way interchangeable is still the same part; not
+interchangeable is a new number — and if it is a new number, create it and supersede the
+old one.
+
+**4. The full change chain.** `LSS-ECR-00002` is Under Review. Carry it through: board
+disposition, an ECO that implements it with effectivity, the affected items, and an ECN
+that tells manufacturing, supply chain, quality and customer support.
+
+**5. Deviation or waiver.** Raise a nonconformance against a real condition in the data and
+take it to disposition. Use-as-is on type design data needs airworthiness concurrence; a
+waiver on product already delivered is a different decision from a deviation on product
+still in the factory, and the record has to say which.
+
+**6. Delta first article.** A changed characteristic needs a delta FAI covering only what
+changed, against the ballooned issue of the drawing. Decide what revision C of
+`LSS-21-0004` would need.
+
+## Releasing anything
+
+Nobody releases by hand any more, and that is correct. The route is:
+
+```python
+me.invoke_action(part, "SubmitForRelease")   # starts the type design release workflow
+me.my_tasks()                                # approvers find their task here
+me.decide(task_id, "Approved" | "Rejected", "the basis for the decision")
+```
+
+Design check and airworthiness both have to approve before the workflow sets Released. A
+rejection returns it to the originator with your comment on the trail. If you are asked to
+approve something whose evidence does not exist, reject it and say why — that is the whole
+reason the step exists.

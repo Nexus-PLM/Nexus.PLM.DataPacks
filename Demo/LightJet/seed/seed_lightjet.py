@@ -50,6 +50,7 @@ import lightjet_projects as PRJ                                      # noqa: E40
 import lightjet_quality as QA                                        # noqa: E402
 import lightjet_requirements as REQ                                  # noqa: E402
 import lightjet_structure as ST                                      # noqa: E402
+import lightjet_value_attrs as VA                                    # noqa: E402
 from aviation_model import GROUPS, NUMBERING                          # noqa: E402
 from aviation_types import ALL_TYPES                                  # noqa: E402
 from build_customization import classification_folders               # noqa: E402
@@ -411,6 +412,28 @@ def validate(registry: dict[str, dict], notes: list[str] | None = None) -> list[
         for pn in (part, mat):
             if pn not in by_pn:
                 problems.append(f"Material alternate: {pn} does not exist.")
+
+    # Value attributes, and the bodies that reference them. A chip naming an attribute
+    # no ancestor owns renders as missing, which looks like a data error to a reviewer.
+    owners = {pn: {a["name"] for a in rows} for pn, rows in VA.VALUE_ATTRS.items()}
+    parent_of = {r["pn"]: r.get("parent") for r in REQ.REQUIREMENTS}
+    for pn in list(VA.VALUE_ATTRS) + list(VA.BODIES):
+        if pn not in by_pn:
+            problems.append(f"Value attributes: requirement {pn} does not exist.")
+    import re as _re
+    for pn, body in VA.BODIES.items():
+        visible = set()
+        walker = pn
+        for _ in range(12):
+            visible |= owners.get(walker, set())
+            walker = parent_of.get(walker)
+            if not walker:
+                break
+        for name in _re.findall(r'data-name="([^"]+)"', body):
+            if name not in visible:
+                problems.append(
+                    f"{pn}: body references value attribute '{name}', which neither it "
+                    f"nor any ancestor owns - the chip would render as missing.")
 
     # Projects.
     for project_id, members in PRJ.PROJECT_ASSIGNMENT.items():
@@ -1005,6 +1028,32 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
         already += 1 if result == "duplicate" else 0
         made += 0 if result == "duplicate" else 1
     say(f"object references: {made} created, {already} already present")
+
+    # ── Requirement value attributes, and the text that uses them ───────────
+    # A value attribute is the number held once, on the requirement that owns it. The
+    # body references it with a chip the client re-resolves at display time, so changing
+    # the attribute changes every sentence that references it - including in descendant
+    # requirements, which inherit their ancestors' attributes and render them as
+    # inherited rather than owned.
+    attrs_written = 0
+    for pn, rows in VA.VALUE_ATTRS.items():
+        for order, attr in enumerate(rows):
+            attr_id = deterministic_id(f"valueattr:{pn}:{attr['name']}")
+            engine.put(f"/api/requirements/{ids[pn]}/value-attrs/{attr_id}", {
+                "id": attr_id, "plmObjectId": ids[pn],
+                "name": attr["name"], "value": attr["value"],
+                "magnitude": attr["magnitude"], "sortOrder": order,
+            })
+            attrs_written += 1
+    say(f"requirement value attributes: {attrs_written}")
+
+    bodies = 0
+    for pn, body in VA.BODIES.items():
+        latest = (by_pn_all[pn].get("history") or [("A", None)])[-1][0]
+        engine.patch(f"/api/plmobjects/{ids[pn]}/revisions/"
+                     f"{revision_ids[(pn, latest)]}/attributes", {"body": body})
+        bodies += 1
+    say(f"requirement bodies with value chips: {bodies}")
 
     # ── Requirement baseline ────────────────────────────────────────────────
     # Guarded: a baseline POST always creates one, so an unguarded reload leaves a pile

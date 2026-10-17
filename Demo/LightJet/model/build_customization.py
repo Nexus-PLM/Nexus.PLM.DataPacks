@@ -34,6 +34,7 @@ from aviation_model import (  # noqa: E402
     BASE, COMPANY, GROUPS, NUMBERING, PREFIX, PROGRAM, WORKFLOWS,
     COMPLIANCE_STATES, QUALITY_STATES, TYPE_DESIGN_STATES,
 )
+import templates as TPL                                               # noqa: E402
 from aviation_types import (  # noqa: E402
     ALL_TYPES, CONCRETE_DOC_TYPES, CONCRETE_ITEM_TYPES, CONCRETE_MATERIAL_TYPES,
     CONCRETE_REQ_TYPES, t,
@@ -602,6 +603,26 @@ def build(out_dir: Path) -> Path:
         add(f"numbering/{schema['name']}.json", indented(schema),
             "numbering", schema["name"])
 
+    # ── Word templates ──────────────────────────────────────────────────────
+    # A type with a `template` block gives every new document of that kind a starting
+    # point. The bytes travel in the package, content-addressed by their own SHA-256, and
+    # the apply uploads them to the Vault under that same key - so the template is the
+    # same file on every site that applies this package, and re-applying uploads nothing.
+    built_templates = TPL.build_all()
+    template_for_type: dict[str, dict] = {}
+    template_index: list[dict] = []
+    for entry in built_templates.values():
+        add(f"templates/{entry['sha256']}", entry["bytes"], "template", entry["sha256"])
+        template_index.append({
+            "sha256": entry["sha256"],
+            "fileName": entry["fileName"],
+            "mimeType": TPL.DOCX_MIME,
+            "usedByTypes": [t(stem) for stem in entry["types"]],
+        })
+        for stem in entry["types"]:
+            template_for_type[t(stem)] = TPL.template_block(entry)
+    add("templates/index.json", indented(template_index), "template", "index")
+
     # Types in dependency order: a base is always written before anything deriving from it.
     state_index = build_state_index()
     written: set[str] = set()
@@ -614,7 +635,14 @@ def build(out_dir: Path) -> Path:
         base = definition["baseTypeName"]
         if base in by_name:
             write_type(by_name[base])
+        # A type that starts from a template carries the block, and depends on the
+        # packaged bytes so the applier lands them first.
+        template = template_for_type.get(name)
+        if template is not None:
+            definition = {**definition, "template": template}
         depends = [f"type:{base}"]
+        if template is not None:
+            depends.append(f"template:{template['revisions'][0]['vaultKey']}")
         if definition.get("numberingSchemaName"):
             depends.append(f"numbering:{definition['numberingSchemaName']}")
         for act in definition.get("actions", []):
