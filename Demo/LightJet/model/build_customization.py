@@ -35,7 +35,8 @@ from aviation_model import (  # noqa: E402
     COMPLIANCE_STATES, QUALITY_STATES, TYPE_DESIGN_STATES,
 )
 from aviation_types import (  # noqa: E402
-    ALL_TYPES, CONCRETE_DOC_TYPES, CONCRETE_ITEM_TYPES, CONCRETE_REQ_TYPES, t,
+    ALL_TYPES, CONCRETE_DOC_TYPES, CONCRETE_ITEM_TYPES, CONCRETE_MATERIAL_TYPES,
+    CONCRETE_REQ_TYPES, t,
 )
 
 VERSION = "1.0.0"
@@ -168,6 +169,7 @@ OWNING_GROUP = {
     "SubsystemRequirement": "LSS Systems Engineering",
     "ComponentRequirement": "LSS Systems Engineering",
     "CertRequirement": "LSS Airworthiness and Certification",
+    "Material": "LSS Design Engineering",
 }
 
 # Types whose content is export-controlled often enough that the whole type is readable
@@ -226,9 +228,96 @@ def security_model(stem: str, state_names: list[str]) -> dict:
         "publicVisibilityState": None,
         "defaultRevisionState": state_names[0],
         "statePermissions": rows,
-        "transitionRules": [],
+        "transitionRules": transition_rules(state_names, owner_group),
         "attributeEditability": [],
     }
+
+
+# States whose entry is an act of approval. Only a Part 21 Subpart J signatory may enter
+# one, which on this site means the airworthiness group or an administrator.
+SIGNATORY_STATES = {"Released", "Accepted", "Issued"}
+
+# Leaving an approved state is as consequential as entering one: un-releasing a drawing
+# that aeroplanes were built to is a continued-airworthiness act, not an edit.
+POST_APPROVAL_STATES = {"Superseded", "Obsolete", "Withdrawn"}
+
+# Refusing or abandoning your own work needs no delegated authority.
+NEGATIVE_STATES = {"Rejected", "Cancelled", "Void"}
+
+SIGNATORY_GROUP = "LSS Airworthiness and Certification"
+
+
+def transition_rules(state_names: list[str], owner_group: str | None) -> list[dict]:
+    """Who may move a revision from each state to each other state.
+
+    `transitionRules` is an ALLOWLIST, and an empty list is not a safe default: the
+    Engine only enforces transitions at all when a type declares at least one rule
+    (`HasTransitionRulesAsync`). A type with none has no transition control whatever its
+    per-state `canTransition` flags say, which is how a designer could set type design
+    data straight to Released with no workflow and no sign-off.
+
+    The rules follow what a design organisation actually does, not what a state diagram
+    makes convenient:
+
+    * Working states move forward, and back for rework, under the owning group.
+    * Entry into an APPROVED state - Released, Accepted, Issued - is the approval itself
+      and belongs to a Part 21 Subpart J signatory alone.
+    * **An approved revision never moves backwards.** There is no route from Released to
+      In Design Review, because that is not how a change is made: you raise a change,
+      revise the item, re-run whatever test the change invalidated, and release the new
+      revision - or you supersede the part with a new number. The only ways out of an
+      approved state are Superseded and Obsolete, and both are signatory acts, because
+      aeroplanes may already have been built to it.
+    * Abandoning or refusing work is the owning group's own business, but only while the
+      work is still theirs - an approved revision cannot be cancelled.
+    """
+    admin = "role:Admin"
+    signatory = f"{admin}, group:{SIGNATORY_GROUP}"
+    working = signatory + (f", group:{owner_group}" if owner_group else "")
+
+    rules: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+
+    def allow(source: str, target: str, who: str):
+        if source == target or (source, target) in seen:
+            return
+        seen.add((source, target))
+        rules.append({"fromState": source, "toState": target, "allowedRoles": who})
+
+    present_approved = SIGNATORY_STATES & set(state_names)
+    present_retired = POST_APPROVAL_STATES & set(state_names)
+    present_negative = NEGATIVE_STATES & set(state_names)
+
+    for index, state in enumerate(state_names):
+        if state in present_approved:
+            # The only way out of an approved revision is to retire it. Everything else
+            # is a new revision or a new part number, which is a create, not a move.
+            for retired in present_retired:
+                allow(state, retired, signatory)
+            continue
+
+        if state in present_retired:
+            # A retired revision stays retired. Superseded may still go on to Obsolete.
+            for retired in present_retired:
+                allow(state, retired, signatory)
+            continue
+
+        # A working state: forward a step, and back a step for rework.
+        for neighbour in (state_names[index + 1:index + 2] +
+                          state_names[max(index - 1, 0):index]):
+            if neighbour in present_approved or neighbour in present_retired:
+                continue                      # handled below, signatory only
+            allow(state, neighbour, working)
+
+        # Approval may be granted from any working state, by a signatory only.
+        for approved in present_approved:
+            allow(state, approved, signatory)
+
+        # Work may be abandoned or refused by the people doing it.
+        for negative in present_negative:
+            allow(state, negative, working)
+
+    return rules
 
 
 def state_names_for(type_def: dict) -> list[str]:
@@ -539,7 +628,8 @@ def build(out_dir: Path) -> Path:
 
     # One security model per concrete type. Abstract bases get none: a policy on an abstract
     # type can never be the one evaluated, because no object is ever of that type.
-    for definition in CONCRETE_ITEM_TYPES + CONCRETE_DOC_TYPES + CONCRETE_REQ_TYPES:
+    for definition in (CONCRETE_ITEM_TYPES + CONCRETE_DOC_TYPES
+                       + CONCRETE_REQ_TYPES + CONCRETE_MATERIAL_TYPES):
         name = definition["typeName"]
         stem = name[len(BASE):]
         model = security_model(stem, state_index[name])

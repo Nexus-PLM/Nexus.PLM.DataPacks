@@ -413,6 +413,11 @@ NUMBERING = [
         [_seg("prefix", "LSS-PS"), _seg("separator", "-"), _seg("counter", digits=4)],
     ),
     schema(
+        f"{PREFIX}LssMaterial",
+        "Qualified materials, e.g. LSS-MAT-00009.",
+        [_seg("prefix", "LSS-MAT"), _seg("separator", "-"), _seg("counter", digits=5)],
+    ),
+    schema(
         f"{PREFIX}LssRequirement",
         "Requirements, sequenced per level: aircraft, operator, system, subsystem, "
         "component and certification. The level is in the number because a requirement's "
@@ -529,7 +534,7 @@ WF_PUBLICATION = "21a10000-0000-4000-a000-000000000006"
 
 WORKFLOWS = [
     workflow(
-        WF_TYPE_DESIGN, "{PREFIX}LssTypeDesignRelease", "Type design data release",
+        WF_TYPE_DESIGN, f"{PREFIX}LssTypeDesignRelease", "Type design data release",
         [
             _node("start", "Start", "Submit for release", 2, 0),
             _approver("design", "Design check", "LSS Design Engineering", 0, 2),
@@ -554,7 +559,7 @@ WORKFLOWS = [
         "originator with the reviewer's comment on the audit trail.",
     ),
     workflow(
-        WF_FAI, "{PREFIX}LssFaiApproval", "First article inspection approval",
+        WF_FAI, f"{PREFIX}LssFaiApproval", "First article inspection approval",
         [
             _node("start", "Start", "Submit FAI", 1, 0),
             _approver("quality", "Quality review (AS9102 Forms 1-3 complete)",
@@ -577,7 +582,7 @@ WORKFLOWS = [
         "ones the FAI covers.",
     ),
     workflow(
-        WF_MRB, "{PREFIX}LssMrbDisposition", "Material review board disposition",
+        WF_MRB, f"{PREFIX}LssMrbDisposition", "Material review board disposition",
         [
             _node("start", "Start", "Raise nonconformance", 1, 0),
             _approver("quality", "Quality containment review",
@@ -602,7 +607,7 @@ WORKFLOWS = [
         "Certification signature, so the decision and the signature sit on one trail.",
     ),
     workflow(
-        WF_COMPLIANCE, "{PREFIX}LssComplianceAcceptance", "Means-of-compliance acceptance",
+        WF_COMPLIANCE, f"{PREFIX}LssComplianceAcceptance", "Means-of-compliance acceptance",
         [
             _node("start", "Start", "Submit evidence", 1, 0),
             _approver("systems", "Systems engineering review",
@@ -624,7 +629,7 @@ WORKFLOWS = [
         "what the compliance checklist is later audited against.",
     ),
     workflow(
-        WF_SUPPLIER, "{PREFIX}LssSupplierPartApproval", "Supplier part source approval",
+        WF_SUPPLIER, f"{PREFIX}LssSupplierPartApproval", "Supplier part source approval",
         [
             _node("start", "Start", "Request source approval", 1, 0),
             _approver("supply", "Supply chain review", "LSS Supply Chain", 0, 2),
@@ -650,7 +655,7 @@ WORKFLOWS = [
         "technically.",
     ),
     workflow(
-        WF_PUBLICATION, "{PREFIX}LssPublicationIssue", "Publication issue",
+        WF_PUBLICATION, f"{PREFIX}LssPublicationIssue", "Publication issue",
         [
             _node("start", "Start", "Submit for issue", 1, 0),
             _approver("support", "Customer support review",

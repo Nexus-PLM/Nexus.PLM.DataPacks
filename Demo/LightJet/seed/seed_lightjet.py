@@ -44,6 +44,8 @@ sys.path.insert(0, str(HERE.parent / "model"))
 import lightjet_data as D                                            # noqa: E402
 import lightjet_documents as DOC                                     # noqa: E402
 import lightjet_items as IT                                          # noqa: E402
+import lightjet_links as LN                                          # noqa: E402
+import lightjet_materials as MAT                                     # noqa: E402
 import lightjet_projects as PRJ                                      # noqa: E402
 import lightjet_quality as QA                                        # noqa: E402
 import lightjet_requirements as REQ                                  # noqa: E402
@@ -222,6 +224,7 @@ def all_records() -> list[dict]:
     """Every object the seed creates, in creation order."""
     return (
         D.VENDOR_REPS
+        + MAT.MATERIALS
         + D.ITEMS_21 + IT.ITEMS_23 + IT.ITEMS_25
         + DOC.ALL_DOCUMENTS
         + REQ.REQUIREMENTS
@@ -381,6 +384,34 @@ def validate(registry: dict[str, dict], notes: list[str] | None = None) -> list[
                 problems.append(f"Trace {link['source']} -> {link['target']}: "
                                 f"{end} does not exist.")
 
+    # Object references: a part to its drawing, its specifications, its material and
+    # its evidence. Both ends must exist, and a pin must name a revision the target has.
+    for link in LN.ALL_REFERENCES:
+        for end in ("source", "target"):
+            if link[end] not in by_pn:
+                problems.append(f"Reference {link['source']} -> {link['target']}: "
+                                f"{end} does not exist.")
+        if link["rule"] == LN.PINNED and not link.get("pin"):
+            problems.append(f"Reference {link['source']} -> {link['target']}: pinned "
+                            f"with no revision to pin to.")
+        if link.get("pin") and link["target"] in by_pn:
+            labels = [lbl for lbl, _ in by_pn[link["target"]].get("history", [])]
+            if link["pin"] not in labels:
+                problems.append(
+                    f"Reference {link['source']} -> {link['target']}: pinned to "
+                    f"revision {link['pin']}, which the target does not have "
+                    f"({', '.join(labels) or 'none'}).")
+
+    for part, mat in MAT.PART_MATERIAL.items():
+        if part not in by_pn:
+            problems.append(f"Material link: part {part} does not exist.")
+        if mat not in by_pn:
+            problems.append(f"Material link: material {mat} does not exist.")
+    for part, mat, _why in MAT.MATERIAL_ALTERNATES:
+        for pn in (part, mat):
+            if pn not in by_pn:
+                problems.append(f"Material alternate: {pn} does not exist.")
+
     # Projects.
     for project_id, members in PRJ.PROJECT_ASSIGNMENT.items():
         if project_id not in {p["id"] for p in PRJ.PROJECTS}:
@@ -535,8 +566,22 @@ class Engine:
     def put(self, path, body):
         return self._call("PUT", path, json=body)
 
-    def post(self, path, body=None):
-        return self._call("POST", path, json=body)
+    def post(self, path, body=None, allow_409=False):
+        """POST, optionally treating 409 as an answer rather than a failure.
+
+        A duplicate object reference - same revision, target and kind - answers 409.
+        On a reload that is the normal case, so it has to be distinguishable from a
+        real failure.
+        """
+        if not allow_409:
+            return self._call("POST", path, json=body)
+        response = self.session.post(f"{self.base}{path}", json=body, timeout=60)
+        if response.status_code == 409:
+            return "duplicate"
+        if response.status_code >= 400:
+            raise RuntimeError(f"POST {path} -> {response.status_code} "
+                               f"{response.text[:400]}")
+        return response.json() if response.content else None
 
     def patch(self, path, body):
         return self._call("PATCH", path, json=body)
@@ -926,6 +971,40 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
         engine.put(f"/api/plmobjects/{ids[link['parent']]}/bom-children/{link_id}",
                    body)
     say(f"bom links: {len(ST.ALL_BOM)}")
+
+    # ── Object references ───────────────────────────────────────────────────
+    # A part to its drawing, its specifications, its material and its evidence. Runs
+    # after the later revisions because a pinned reference names a specific revision.
+    def add_reference(source, target, kind, rule, pin=None, note=None):
+        source_rev = revision_ids[(source, (by_pn_all[source].get("history")
+                                            or [("A", None)])[-1][0])]
+        body = {"targetObjectId": ids[target], "linkTypeName": kind,
+                "revisionRule": rule, "note": note}
+        if rule == LN.PINNED and pin:
+            body["pinnedRevisionId"] = revision_ids[(target, pin)]
+        return engine.post(f"/api/plmobjects/{ids[source]}/revisions/{source_rev}"
+                           f"/references", body, allow_409=True)
+
+    by_pn_all = {r["pn"]: r for r in records}
+    made, already = 0, 0
+    for link in LN.ALL_REFERENCES:
+        result = add_reference(link["source"], link["target"], link["kind"],
+                               link["rule"], link.get("pin"), link.get("note"))
+        if result == "duplicate":
+            already += 1
+        else:
+            made += 1
+    # Every part to the material it is made from, and the one unqualified alternate.
+    for part, mat in MAT.PART_MATERIAL.items():
+        result = add_reference(part, mat, LN.RELATED, LN.RELEASED, None,
+                               "The material this part is made from.")
+        already += 1 if result == "duplicate" else 0
+        made += 0 if result == "duplicate" else 1
+    for part, mat, why in MAT.MATERIAL_ALTERNATES:
+        result = add_reference(part, mat, LN.RELATED, LN.RELEASED, None, why)
+        already += 1 if result == "duplicate" else 0
+        made += 0 if result == "duplicate" else 1
+    say(f"object references: {made} created, {already} already present")
 
     # ── Requirement baseline ────────────────────────────────────────────────
     # Guarded: a baseline POST always creates one, so an unguarded reload leaves a pile
