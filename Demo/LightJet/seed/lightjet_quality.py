@@ -938,6 +938,12 @@ CHANGE_CHAINS = [
             "title": "Implement V-band coupling revision B and release spares",
             "status": "Closed",
             "attrs": {
+                "reason":
+                    "Implements approved change request LSS-ECR-00001. Three in-service "
+                    "reports of a loose bleed duct coupling, attributed by "
+                    "LSS-NCR-00003 to thermal relaxation of the 1.2 mm clamp band, and "
+                    "an interim repeat torque check that cannot be carried "
+                    "indefinitely.",
                 "implementationPlan":
                     "Release LSS-21-0004 revision B and LSS-DWG-21-0005 revision B "
                     "through the type design release route. Re-run the proof pressure "
@@ -958,11 +964,15 @@ CHANGE_CHAINS = [
             ],
             "transitions": [
                 ("Submitted", "Raised from approved ECR LSS-ECR-00001."),
-                ("Approved", "Revision B released under the design organisation "
-                                "privilege on 2026-09-28. Proof pressure test repeated "
-                                "and passed."),
-                ("Released", "Delta first article raised and the spares batch released "
-                             "on LSS-ARC-00002. Implementation complete."),
+                ("Under Review", "Implementation plan and effectivity reviewed with "
+                                 "manufacturing, supply chain and customer support."),
+                ("Approved", "Approved for production and retrofit. Weight impact of "
+                             "0.12 kg per coupling accepted."),
+                ("Released", "Revision B released under the design organisation "
+                             "privilege on 2026-09-28. Proof pressure test repeated and "
+                             "passed."),
+                ("Closed", "Delta first article raised and the spares batch released on "
+                           "LSS-ARC-00002. Implementation complete."),
             ],
         },
         "ecn": {
@@ -990,6 +1000,11 @@ CHANGE_CHAINS = [
                              "LSS Airworthiness and Certification"],
             "transitions": [
                 ("Submitted", "Raised on completion of LSS-ECO-00004."),
+                ("Under Review", "Reviewed with manufacturing, supply chain, quality "
+                                 "and customer support. Interchangeability with "
+                                 "revision A confirmed."),
+                ("Approved", "Approved for issue. Airworthiness has confirmed the "
+                             "eligibility statement for the spares batch."),
                 ("Issued", "Issued to manufacturing, supply chain, quality, customer "
                            "support and airworthiness with a 14 day acknowledgement "
                            "deadline."),
@@ -1110,6 +1125,12 @@ CHANGE_CHAINS = [
             "title": "Implement passenger seat revision B with swivel interlock",
             "status": "Approved",
             "attrs": {
+                "reason":
+                    "Implements approved change request LSS-ECR-00004. The equivalent "
+                    "safety finding sought under certification review item CRI-25-002 "
+                    "depends on a mechanical means of holding the club seat "
+                    "forward-facing during taxi, take-off and landing, and the revision "
+                    "A seat has none.",
                 "implementationPlan":
                     "Release LSS-F-00010 revision B, drawing LSS-DWG-25-0005 revision B "
                     "and procurement specification LSS-SPEC-PRO-004 revision B. Flow the "
@@ -1130,10 +1151,11 @@ CHANGE_CHAINS = [
             ],
             "transitions": [
                 ("Submitted", "Raised from approved ECR LSS-ECR-00004."),
-                ("Approved", "Revision B released. The dynamic test has been run and "
-                                "passed but the report is still in airworthiness "
-                                "sign-off, so the change cannot complete and the service "
-                                "bulletin cannot issue."),
+                ("Under Review", "Implementation plan reviewed. Caldera Seating has "
+                                 "accepted the flowed-down interlock requirement at "
+                                 "revision B of LSS-SPEC-PRO-004."),
+                ("Approved", "Approved. Certification blocking, so approved despite the "
+                             "retest cost."),
             ],
         },
         "ecn": None,
@@ -1145,6 +1167,11 @@ CHANGE_CHAINS = [
             "title": "Release ECS controller software version 2.1.0",
             "status": "Closed",
             "attrs": {
+                "reason":
+                    "Closes problem report LSS-PR-00002. Cabin temperature oscillates "
+                    "plus or minus 4 degrees C in the descent below 6 000 m, traced to "
+                    "an integrator wind-up in the temperature control law when the pack "
+                    "outlet is at its lower limit.",
                 "implementationPlan":
                     "Release LSS-SW-0001 revision C carrying software version 2.1.0, "
                     "which corrects the integrator wind-up in the temperature control law "
@@ -1166,11 +1193,13 @@ CHANGE_CHAINS = [
             "problems": ["LSS-PR-00002"],
             "transitions": [
                 ("Submitted", "Raised to close problem report LSS-PR-00002."),
-                ("Approved", "Version 2.1.0 verified to DO-178C level C with "
-                                "independence. Accomplishment summary and configuration "
-                                "index updated."),
-                ("Released", "Released 2026-09-15. Service bulletin LSS-SB-21-002 "
-                             "issued."),
+                ("Under Review", "Version 2.1.0 verified to DO-178C level C with "
+                                 "verification independence. Accomplishment summary and "
+                                 "configuration index updated and reviewed."),
+                ("Approved", "Approved for production and retrofit."),
+                ("Released", "Released 2026-09-15."),
+                ("Closed", "Service bulletin LSS-SB-21-002 issued and the problem report "
+                           "closed."),
             ],
         },
         "ecn": {
@@ -1198,6 +1227,11 @@ CHANGE_CHAINS = [
                              "LSS Systems Engineering"],
             "transitions": [
                 ("Submitted", "Raised on completion of LSS-ECO-00002."),
+                ("Under Review", "Reviewed with manufacturing, customer support and "
+                                 "airworthiness. The configuration index "
+                                 "LSS-CERT-SWP-005 is confirmed as the reference for "
+                                 "the released load."),
+                ("Approved", "Approved for issue."),
                 ("Issued", "Issued with a 14 day acknowledgement deadline."),
             ],
         },

@@ -846,9 +846,31 @@ SW_PLANS = [
 # Compliance reports - the certification board
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Who is producing the evidence for a compliance item, by the chapter it sits in. The
+# author of the compliance record is the certification engineer who will accept it;
+# the person actually holding the item is the engineer generating the substantiation,
+# and a board that shows the acceptor on every card tells nobody who to chase.
+EVIDENCE_OWNER = {
+    ATA21: "r.achebe",
+    ATA23: "d.okonjo",
+    ATA25: "m.sandoval",
+}
+
+# The items whose evidence is structural rather than systems work, so they sit with
+# stress rather than with the chapter's systems engineer.
+STRUCTURAL_ITEMS = {"LSS-CERT-COMP-010", "LSS-CERT-COMP-014", "LSS-CERT-COMP-019"}
+
+# The items that are certification argument rather than engineering evidence - an
+# equivalent safety finding, a special condition, a plan - and stay with certification.
+CERTIFICATION_ITEMS = {"LSS-CERT-COMP-015", "LSS-CERT-COMP-022", "LSS-CERT-COMP-023"}
+
+
 def _comp(pn, para, requirement, moc, standard, status, evidence, accepted_by=None,
           accepted=None, findings=0, loi="DOA privilege - no authority involvement",
           ata=ATA21, dal="Not applicable", notes=None, compliance="In work"):
+    owner = ("p.lindqvist" if pn in STRUCTURAL_ITEMS
+             else "g.rossi" if pn in CERTIFICATION_ITEMS
+             else EVIDENCE_OWNER.get(ata, "s.vanderberg"))
     attrs = _doc_common("g.rossi", "2026-05-14", 12, checked="l.harkness",
                         approved="l.harkness" if accepted_by else None,
                         regulationParagraph=para,
@@ -863,6 +885,8 @@ def _comp(pn, para, requirement, moc, standard, status, evidence, accepted_by=No
                         meansOfCompliance=moc,
                         complianceRegulations=para,
                         designAssuranceLevel=dal,
+                        assignee=owner,
+                        ataChapter=ata,
                         doaApprovalReference=DOA)
     return doc("ComplianceReport", pn, f"{para} - {requirement[:70]}", status, attrs,
                F_COMP, notes=notes, doc_file=None)

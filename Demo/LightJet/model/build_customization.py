@@ -31,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from aviation_model import (  # noqa: E402
-    COMPANY, GROUPS, NUMBERING, PREFIX, PROGRAM, WORKFLOWS,
+    BASE, COMPANY, GROUPS, NUMBERING, PREFIX, PROGRAM, WORKFLOWS,
     COMPLIANCE_STATES, QUALITY_STATES, TYPE_DESIGN_STATES,
 )
 from aviation_types import (  # noqa: E402
@@ -541,7 +541,7 @@ def build(out_dir: Path) -> Path:
     # type can never be the one evaluated, because no object is ever of that type.
     for definition in CONCRETE_ITEM_TYPES + CONCRETE_DOC_TYPES + CONCRETE_REQ_TYPES:
         name = definition["typeName"]
-        stem = name[len("n5LightSpeedSystems"):]
+        stem = name[len(BASE):]
         model = security_model(stem, state_index[name])
         add(f"security/{name}.security.json", indented(model),
             "security", name, [f"type:{name}", "groups:groups"])
@@ -549,7 +549,22 @@ def build(out_dir: Path) -> Path:
     add("classification/folders.json", indented(classification_folders()),
         "classification", "classification")
 
-    add("kanban/boards.json", indented(kanban_boards()),
+    # The applier reads this file as a list of KanbanPayload: {id, name, status,
+    # definitionJson} - the same envelope the workflow files use, with the board's own
+    # definition as a SERIALISED STRING rather than a nested object. Writing the bare
+    # definition instead makes every board deserialise with an empty id, and six rows
+    # upserted on one empty id is one useless row and no boards. The report still says
+    # "applied" six times, with an empty key, which is the only visible clue.
+    boards = []
+    for index, definition in enumerate(kanban_boards(), start=1):
+        boards.append({
+            # Deterministic, so re-applying updates the same board rather than adding one.
+            "id": f"b0a2d000-0000-4000-c000-{index:012d}",
+            "name": definition["name"],
+            "status": "Published",
+            "definitionJson": json.dumps(definition, ensure_ascii=False),
+        })
+    add("kanban/boards.json", indented(boards),
         "kanban", "kanban", ["groups:groups"])
 
     # ── Seal ────────────────────────────────────────────────────────────────
@@ -564,7 +579,7 @@ def build(out_dir: Path) -> Path:
         "formatVersion": 1,
         # A fixed id, not a fresh GUID: the package is the model, and a model that is
         # unchanged should seal to the same bytes.
-        "packageId": "9b1f4c20-6d3a-4e18-9f55-2026nx200base",
+        "packageId": f"9b1f4c20-6d3a-4e18-9f55-{PREFIX:<4}nx200base"[:38],
         "name": PACKAGE_NAME,
         "version": VERSION,
         "createdUtc": "2026-10-17T00:00:00+00:00",
@@ -587,7 +602,8 @@ def build(out_dir: Path) -> Path:
     manifest["manifestSha256"] = sha256_hex(canonicalize(unsealed).encode("utf-8"))
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    target = out_dir / f"lightjet-nx200-baseline-{VERSION}.nexuscustomization"
+    target = (out_dir /
+              f"lightjet-nx200-baseline-{PREFIX}-{VERSION}.nexuscustomization")
 
     # A fixed entry timestamp. zipfile defaults each entry's date_time to the current
     # clock, which makes two builds of identical content differ in the container even

@@ -19,11 +19,18 @@ Part 21 Subpart J approval, so type design data is released under the 21A.263 pr
 rather than sent to the authority item by item. Suppliers, operators and people are invented.
 """
 
+import sys
+from pathlib import Path
+
 PROGRAMME = "NX-200"
 AIRCRAFT = "NX-200 Light Jet"
 ROOT_FOLDER = f"{AIRCRAFT}"
 
-T = "n5LightSpeedSystems"
+# Resolved from the same single source the model uses, so the seed can never name a
+# type the package did not build. The path insert makes this work whichever directory
+# imported us - the loader adds both, the document generator only adds seed/.
+sys.path.insert(0, str(Path(__file__).parent.parent / "model"))
+from aviation_model import BASE as T  # noqa: E402
 
 # Lifecycle states, by the set a type uses. Named here so the content reads in domain terms.
 S_WORK, S_DESIGN, S_STRESS, S_SIGN, S_REL, S_SUPER = (
@@ -64,6 +71,16 @@ USERS = [
     ("t.brennan", "Tom Brennan", "User", ["LSS Manufacturing Engineering"]),
     ("y.cheng", "Yuan Cheng", "User", ["LSS Supply Chain"]),
     ("f.mbeki", "Faith Mbeki", "User", ["LSS Customer Support"]),
+    ("h.okafor", "Helena Okafor", "User",
+     ["LSS Programme Management", "LSS Change Control Board"]),
+    ("j.whitlock", "James Whitlock", "User",
+     ["LSS Project Management", "LSS Programme Management"]),
+    # A DER finds compliance on the FAA's behalf. Membership of Airworthiness gives the
+    # read access to type design data that the role needs; the DER group is what carries
+    # the delegation itself.
+    ("c.delacroix", "Camille Delacroix", "User",
+     ["FAA Designated Engineering Representatives",
+      "LSS Airworthiness and Certification"]),
     ("g.rossi", "Giulia Rossi", "User",
      ["LSS Airworthiness and Certification", "LSS Material Review Board"]),
 ]

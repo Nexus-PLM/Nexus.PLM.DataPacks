@@ -24,6 +24,7 @@ rather than a parallel aviation hierarchy standing next to the one it already ha
 """
 
 from aviation_model import (
+    PREFIX,
     AIRWORTHINESS_CLASS, AS9100D_CLAUSES, ATA_CHAPTERS_IN_SCOPE, CERTIFICATE_STATES,
     CERT_BASIS, COMPLIANCE_STATES, CONFIDENTIALITY, DAL, DO160_SECTIONS, EXPORT_CLASS,
     EXPORT_JURISDICTION, FAILURE_EFFECT, MEANS_OF_COMPLIANCE, NADCAP_FAMILIES,
@@ -87,6 +88,17 @@ def action(name, display, description, workflow_id, available_in):
 # ─────────────────────────────────────────────────────────────────────────────
 
 ITEM_BASE_ATTRS = [
+    a("priority", "Priority",
+      lov=["Critical", "High", "Medium", "Low"], default="Medium"),
+    # Who has the ball now, as opposed to who owns the design. A drawing in stress review
+    # is still owned by its designer but is held by a stress engineer, and a board that
+    # cannot show that is a board nobody trusts.
+    a("assignee", "Currently With"),
+    # A kanban card takes its headline from a `title` attribute; without one every
+    # card on every board reads as its part number. ChangeBase and RequirementsBase
+    # already declare one out of the box, so only the item and document trees need
+    # it - and a title is worth having in the grids and in search regardless.
+    a("title", "Title"),
     a("programmeCode", "Programme", required=True, lov=PROGRAMMES,
       default="NX-200"),
     a("ataChapter", "ATA Chapter", lov=ATA_ALL),
@@ -159,6 +171,21 @@ NON_TYPE_DESIGN_ITEM_ATTRS = [
 ]
 
 DOC_BASE_ATTRS = [
+    # Which chapter the document belongs to. An item carries this through the item base;
+    # a document had no equivalent, which meant the compliance board could not be filtered
+    # by system - the first thing a chief engineer asks it to do.
+    a("ataChapter", "ATA Chapter", lov=ATA_ALL),
+    a("priority", "Priority",
+      lov=["Critical", "High", "Medium", "Low"], default="Medium"),
+    # Who has the ball now, as opposed to who owns the design. A drawing in stress review
+    # is still owned by its designer but is held by a stress engineer, and a board that
+    # cannot show that is a board nobody trusts.
+    a("assignee", "Currently With"),
+    # A kanban card takes its headline from a `title` attribute; without one every
+    # card on every board reads as its part number. ChangeBase and RequirementsBase
+    # already declare one out of the box, so only the item and document trees need
+    # it - and a title is worth having in the grids and in search regardless.
+    a("title", "Title"),
     a("issueDate", "Issue Date", kind="Date"),
     a("authorName", "Author"),
     a("checkedBy", "Checked By"),
@@ -197,6 +224,10 @@ NON_TYPE_DESIGN_DOC_ATTRS = [
            "Airworthiness"]),
     a("auditEvidence", "Audit Evidence", kind="Bool", default=True),
     a("objectiveEvidenceRefs", "Objective Evidence References"),
+    # How the record closed, in one phrase. Derived from the field that already holds the
+    # outcome - the MRB disposition, the first article result, the approval status - so
+    # the board can show it without anyone keeping two fields in step by hand.
+    a("resolution", "Outcome"),
 ]
 
 
@@ -270,7 +301,7 @@ CONCRETE_ITEM_TYPES = [
        "A structural or mechanical part Light Speed Systems designs - ducting, brackets, "
        "machined fittings, composite panels. The workhorse type of the ATA 21 and ATA 25 "
        "structure.",
-       t("EngBase"), numbering="n5LssAircraftPart", actions=[RELEASE_ACTION],
+       t("EngBase"), numbering=f"{PREFIX}LssAircraftPart", actions=[RELEASE_ACTION],
        attributes=[
            a("partCategory", "Part Category",
              lov=["Detail part", "Sub-assembly", "Machined", "Sheet metal",
@@ -299,7 +330,7 @@ CONCRETE_ITEM_TYPES = [
        "An electrical or avionics item Light Speed Systems designs or specifies to its own "
        "requirement - control panels, power distribution, antennas, audio equipment. Carries "
        "the DO-160G qualification position and the HIRF and lightning zone it sits in.",
-       t("EngBase"), numbering="n5LssElectricalPart", actions=[RELEASE_ACTION],
+       t("EngBase"), numbering=f"{PREFIX}LssElectricalPart", actions=[RELEASE_ACTION],
        attributes=[
            a("electricalFunction", "Electrical Function",
              lov=["Power generation", "Power distribution", "Control panel",
@@ -330,7 +361,7 @@ CONCRETE_ITEM_TYPES = [
        "monuments. The ATA 25 workhorse. Flammability and occupant-safety substantiation are "
        "first-class fields because that is what the certification evidence turns on, and "
        "because these are the items a customer reconfigures between aircraft.",
-       t("EngBase"), numbering="n5LssInteriorPart", actions=[RELEASE_ACTION],
+       t("EngBase"), numbering=f"{PREFIX}LssInteriorPart", actions=[RELEASE_ACTION],
        attributes=[
            a("interiorZone", "Interior Zone",
              lov=["Flight compartment", "Passenger compartment", "Galley", "Lavatory",
@@ -365,7 +396,7 @@ CONCRETE_ITEM_TYPES = [
        "An ATA installation: the item that puts equipment on the aircraft and owns the "
        "interface to it. Where the routing, clamping, torque and sealing definition lives, "
        "and the level at which a system is signed off as installed.",
-       t("EngBase"), numbering="n5LssInstallation", actions=[RELEASE_ACTION],
+       t("EngBase"), numbering=f"{PREFIX}LssInstallation", actions=[RELEASE_ACTION],
        attributes=[
            a("installationZone", "Aircraft Zone"),
            a("systemInstalled", "System Installed"),
@@ -380,7 +411,7 @@ CONCRETE_ITEM_TYPES = [
     ty("Harness", "Wiring Harness",
        "A wiring harness or loom. Separation category and route zone are held because EWIS "
        "substantiation depends on them, not on the wire list alone.",
-       t("EngBase"), numbering="n5LssHarness", actions=[RELEASE_ACTION],
+       t("EngBase"), numbering=f"{PREFIX}LssHarness", actions=[RELEASE_ACTION],
        attributes=[
            a("wireSpecification", "Wire Specification"),
            a("gaugeRange", "Gauge Range (AWG)"),
@@ -404,7 +435,7 @@ CONCRETE_ITEM_TYPES = [
        "The number carried in partNumber is a site cross-reference; the designation a buyer "
        "actually orders against is standardNumber. A standard part is type design data but "
        "the design authority is the standards body, not Light Speed Systems.",
-       t("TypeDesignItemBase"), numbering="n5LssStandardPart",
+       t("TypeDesignItemBase"), numbering=f"{PREFIX}LssStandardPart",
        attributes=[
            a("standardFamily", "Standard Family",
              lov=["AN", "MS", "NAS", "NASM", "BACB", "EN", "ISO", "DIN", "LN", "SAE"],
@@ -432,7 +463,7 @@ CONCRETE_ITEM_TYPES = [
        "counterfeit-risk fields are here because AS9100D 8.1.4 asks the organisation to "
        "control the risk of suspect parts entering the build, and the only way to sample "
        "that in an audit is to hold it as data.",
-       t("TypeDesignItemBase"), numbering="n5LssVendorPart",
+       t("TypeDesignItemBase"), numbering=f"{PREFIX}LssVendorPart",
        actions=[action("RequestSourceApproval", "Request source approval",
                        "Starts the supplier part source approval route.",
                        WF_SUPPLIER,
@@ -478,7 +509,7 @@ CONCRETE_ITEM_TYPES = [
        "assurance level drives which of the standard's objectives apply and whether "
        "verification independence is required, so both are held on the item rather than "
        "buried in the plan.",
-       t("TypeDesignItemBase"), numbering="n5LssSoftwareItem", actions=[RELEASE_ACTION],
+       t("TypeDesignItemBase"), numbering=f"{PREFIX}LssSoftwareItem", actions=[RELEASE_ACTION],
        attributes=[
            a("softwarePartNumber", "Software Part Number", required=True),
            a("softwareVersion", "Software Version", required=True),
@@ -502,7 +533,7 @@ CONCRETE_ITEM_TYPES = [
        "A programmable electronic hardware item developed to DO-254. Complex devices carry "
        "the full objective set; simple ones are substantiated by test alone, so the "
        "classification is a required field.",
-       t("TypeDesignItemBase"), numbering="n5LssAehItem", actions=[RELEASE_ACTION],
+       t("TypeDesignItemBase"), numbering=f"{PREFIX}LssAehItem", actions=[RELEASE_ACTION],
        attributes=[
            a("hardwarePartNumber", "Hardware Part Number", required=True),
            a("hardwareVersion", "Hardware Version", required=True),
@@ -547,7 +578,7 @@ CONCRETE_ITEM_TYPES = [
        "type design data, but a check fixture whose calibration has lapsed invalidates the "
        "inspection records taken with it, so calibration status is held as data and not in a "
        "spreadsheet.",
-       t("NonTypeDesignItemBase"), numbering="n5LssTooling",
+       t("NonTypeDesignItemBase"), numbering=f"{PREFIX}LssTooling",
        attributes=[
            a("toolType", "Tool Type",
              lov=["Assembly jig", "Drill template", "Bond fixture", "Layup mould",
@@ -572,7 +603,7 @@ CONCRETE_ITEM_TYPES = [
        "Sealants, adhesives, primers, finishes and fluids. Shelf life and cure schedule are "
        "held because an expired sealant batch is a nonconformance waiting to be found, and "
        "because the batch is what a traceability question lands on.",
-       t("NonTypeDesignItemBase"), numbering="n5LssConsumable",
+       t("NonTypeDesignItemBase"), numbering=f"{PREFIX}LssConsumable",
        attributes=[
            a("consumableClass", "Consumable Class",
              lov=["Sealant", "Adhesive - film", "Adhesive - paste", "Primer",
@@ -610,7 +641,7 @@ CONCRETE_DOC_TYPES = [
        "has been ballooned is held here because an AS9102 Form 3 has to agree with a specific "
        "ballooned issue of a specific drawing, and 'the latest drawing' is not an answer an "
        "auditor accepts.",
-       t("TypeDesignDocumentsBase"), numbering="n5LssDrawing",
+       t("TypeDesignDocumentsBase"), numbering=f"{PREFIX}LssDrawing",
        actions=[DOC_RELEASE_ACTION],
        attributes=[
            a("drawingType", "Drawing Type",
@@ -635,7 +666,7 @@ CONCRETE_DOC_TYPES = [
        "A design, material, process, test, procurement or software requirements "
        "specification. The class drives the numbering sequence, so a process specification "
        "and a material specification never share a number.",
-       t("TypeDesignDocumentsBase"), numbering="n5LssSpecification",
+       t("TypeDesignDocumentsBase"), numbering=f"{PREFIX}LssSpecification",
        actions=[DOC_RELEASE_ACTION],
        attributes=[
            a("specificationClass", "Specification Class",
@@ -655,7 +686,7 @@ CONCRETE_DOC_TYPES = [
     ty("Icd", "Interface Control Document",
        "The agreed interface between two items, held as a document in its own right so both "
        "sides reference one controlled definition rather than two drawings that drift.",
-       t("TypeDesignDocumentsBase"), numbering="n5LssInterfaceControl",
+       t("TypeDesignDocumentsBase"), numbering=f"{PREFIX}LssInterfaceControl",
        actions=[DOC_RELEASE_ACTION],
        attributes=[
            a("interfaceType", "Interface Type",
@@ -678,7 +709,7 @@ CONCRETE_DOC_TYPES = [
        "requirement is, how it was shown, what the evidence is and who accepted it. This is "
        "the type the certification compliance board is built from, and the type an auditor "
        "samples when asking how compliance was shown.",
-       t("TypeDesignDocumentsBase"), numbering="n5LssCertificationDoc",
+       t("TypeDesignDocumentsBase"), numbering=f"{PREFIX}LssCertificationDoc",
        lifecycle=states(COMPLIANCE_STATES),
        actions=[action("SubmitEvidence", "Submit evidence",
                        "Starts the means-of-compliance acceptance route.",
@@ -709,7 +740,7 @@ CONCRETE_DOC_TYPES = [
        "The plan for an equipment qualification campaign, normally DO-160G. Names the "
        "sections and environmental categories the equipment will be shown against before any "
        "specimen goes on a shaker.",
-       t("TypeDesignDocumentsBase"), numbering="n5LssCertificationDoc",
+       t("TypeDesignDocumentsBase"), numbering=f"{PREFIX}LssCertificationDoc",
        actions=[DOC_RELEASE_ACTION],
        attributes=[
            a("do160Revision", "DO-160 Revision",
@@ -730,7 +761,7 @@ CONCRETE_DOC_TYPES = [
        "test are first-class fields, because a pass with a deviation is a different "
        "certification position from a clean pass and the difference must not live in a "
        "paragraph somebody has to read.",
-       t("TypeDesignDocumentsBase"), numbering="n5LssCertificationDoc",
+       t("TypeDesignDocumentsBase"), numbering=f"{PREFIX}LssCertificationDoc",
        actions=[DOC_RELEASE_ACTION],
        attributes=[
            a("do160Revision", "DO-160 Revision",
@@ -756,7 +787,7 @@ CONCRETE_DOC_TYPES = [
        "cause analysis or failure mode analysis under ARP4754A and ARP4761A. Holds the "
        "quantitative target and what was achieved against it, which is how a design assurance "
        "level is justified rather than asserted.",
-       t("TypeDesignDocumentsBase"), numbering="n5LssCertificationDoc",
+       t("TypeDesignDocumentsBase"), numbering=f"{PREFIX}LssCertificationDoc",
        actions=[DOC_RELEASE_ACTION],
        attributes=[
            a("assessmentType", "Assessment Type",
@@ -781,7 +812,7 @@ CONCRETE_DOC_TYPES = [
        "One of the DO-178C or DO-254 plans and indices: PSAC, SDP, SVP, SCMP, SQAP, PHAC, "
        "accomplishment summary or configuration index. Held as its own type because the "
        "authority asks for a specific plan by name and the set has to be shown complete.",
-       t("TypeDesignDocumentsBase"), numbering="n5LssCertificationDoc",
+       t("TypeDesignDocumentsBase"), numbering=f"{PREFIX}LssCertificationDoc",
        actions=[DOC_RELEASE_ACTION],
        attributes=[
            a("planType", "Plan Type",
@@ -812,7 +843,7 @@ CONCRETE_DOC_TYPES = [
        "conditions and equivalent safety findings sought, the certification review items "
        "open, and which design organisation privileges will be used. The document the whole "
        "compliance checklist hangs off.",
-       t("TypeDesignDocumentsBase"), numbering="n5LssCertificationDoc",
+       t("TypeDesignDocumentsBase"), numbering=f"{PREFIX}LssCertificationDoc",
        actions=[DOC_RELEASE_ACTION],
        attributes=[
            a("certificationProgramme", "Certification Programme", required=True),
@@ -834,7 +865,7 @@ CONCRETE_DOC_TYPES = [
        "The electromagnetic interference compliance assessment for an installed equipment "
        "item: DO-160G sections 20, 21, 22 and 25 together with the HIRF and lightning "
        "environment the installation sits in.",
-       t("TypeDesignDocumentsBase"), numbering="n5LssCertificationDoc",
+       t("TypeDesignDocumentsBase"), numbering=f"{PREFIX}LssCertificationDoc",
        actions=[DOC_RELEASE_ACTION],
        attributes=[
            a("equipmentUnderTest", "Equipment Assessed", required=True),
@@ -860,7 +891,7 @@ CONCRETE_DOC_TYPES = [
        "An AS9102 Rev C first article inspection. Forms 1, 2 and 3 are tracked separately "
        "because a submission is incomplete until all three are, and because a delta FAI "
        "legitimately re-uses forms from the full FAI it builds on.",
-       t("NonTypeDesignDocumentsBase"), numbering="n5LssQualityRecord",
+       t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssQualityRecord",
        actions=[action("SubmitFai", "Submit for approval",
                        "Starts the first article inspection approval route.",
                        WF_FAI, ["Open", "Under Review"])],
@@ -902,7 +933,7 @@ CONCRETE_DOC_TYPES = [
        "escape flag and the safety-impact flag are separate fields on purpose: an escape is a "
        "customer notification question and a safety impact is a continued-airworthiness "
        "question, and one does not imply the other.",
-       t("NonTypeDesignDocumentsBase"), numbering="n5LssQualityRecord",
+       t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssQualityRecord",
        actions=[action("RaiseToMrb", "Raise to material review board",
                        "Starts the material review board disposition route.",
                        WF_MRB, ["Open", "Under Review"])],
@@ -946,7 +977,7 @@ CONCRETE_DOC_TYPES = [
        "A supplier's statement that what was shipped conforms to the purchase order and its "
        "flowed-down requirements. Issued once and then immutable, which is why the lifecycle "
        "has no route back out of Issued.",
-       t("NonTypeDesignDocumentsBase"), numbering="n5LssQualityRecord",
+       t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssQualityRecord",
        lifecycle=states(CERTIFICATE_STATES),
        attributes=[
            a("supplierName", "Supplier", required=True),
@@ -969,7 +1000,7 @@ CONCRETE_DOC_TYPES = [
        "An FAA 8130-3 or EASA Form 1. The release status in block 12/13 and the eligibility "
        "statement decide what an operator may legally do with the part, so they are held as "
        "fields rather than as text in an attachment.",
-       t("NonTypeDesignDocumentsBase"), numbering="n5LssQualityRecord",
+       t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssQualityRecord",
        lifecycle=states(CERTIFICATE_STATES),
        attributes=[
            a("formType", "Form Type",
@@ -1000,7 +1031,7 @@ CONCRETE_DOC_TYPES = [
        "are structured fields because an operator's compliance is judged against them, and "
        "because a mandatory bulletin is frequently the means of complying with an "
        "airworthiness directive.",
-       t("NonTypeDesignDocumentsBase"), numbering="n5LssServiceBulletin",
+       t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssServiceBulletin",
        lifecycle=states(PUBLICATION_STATES),
        actions=[action("SubmitForIssue", "Submit for issue",
                        "Starts the publication issue route.",
@@ -1030,7 +1061,7 @@ CONCRETE_DOC_TYPES = [
        "inspecting the finished part, so the process itself is controlled. Carries whether "
        "NADCAP accreditation is required of the performing source and whether the plan is "
        "frozen.",
-       t("NonTypeDesignDocumentsBase"), numbering="n5LssProcessSpec",
+       t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssProcessSpec",
        lifecycle=states(TYPE_DESIGN_STATES),
        attributes=[
            a("processFamily", "Process Family", lov=NADCAP_FAMILIES, required=True),
@@ -1053,7 +1084,7 @@ CONCRETE_DOC_TYPES = [
        "The approval position for one supplier: scope, certificates and their expiry, audit "
        "outcome and risk rating. An expiring AS9100 certificate is a data question, which is "
        "the point of holding it here rather than in a purchasing spreadsheet.",
-       t("NonTypeDesignDocumentsBase"), numbering="n5LssQualityRecord",
+       t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssQualityRecord",
        attributes=[
            a("supplierName", "Supplier", required=True),
            a("supplierCageCode", "Supplier CAGE Code"),
@@ -1143,7 +1174,7 @@ CONCRETE_REQ_TYPES = [
        "A top-level aircraft requirement for the NX-200 - range, cabin altitude, noise, "
        "field length. The root of the trace tree; everything else is allocated down from "
        "here.",
-       "MissionRequirement", numbering="n5LssRequirement", lifecycle=REQ_LIFECYCLE,
+       "MissionRequirement", numbering=f"{PREFIX}LssRequirement", lifecycle=REQ_LIFECYCLE,
        attributes=REQ_AVIATION_ATTRS + [
            a("designMissionProfile", "Design Mission Profile"),
            a("performanceTarget", "Performance Target"),
@@ -1154,7 +1185,7 @@ CONCRETE_REQ_TYPES = [
        "A need expressed by a launch operator, completion centre or the certification "
        "authority. Held separately from aircraft requirements so a negotiated customer "
        "wish is never mistaken for a design commitment.",
-       "StakeholderRequirement", numbering="n5LssRequirement", lifecycle=REQ_LIFECYCLE,
+       "StakeholderRequirement", numbering=f"{PREFIX}LssRequirement", lifecycle=REQ_LIFECYCLE,
        attributes=REQ_AVIATION_ATTRS + [
            a("operatorName", "Operator / Stakeholder"),
            a("fleetSize", "Fleet Size", kind="Number"),
@@ -1169,7 +1200,7 @@ CONCRETE_REQ_TYPES = [
        "A requirement on one ATA system - the environmental control system, the "
        "communications system, the furnishings. Allocated down from aircraft level and the "
        "level at which a functional hazard assessment is normally performed.",
-       "SystemRequirement", numbering="n5LssRequirement", lifecycle=REQ_LIFECYCLE,
+       "SystemRequirement", numbering=f"{PREFIX}LssRequirement", lifecycle=REQ_LIFECYCLE,
        attributes=REQ_AVIATION_ATTRS + [
            a("systemName", "System Name"),
            a("functionalHazardRef", "Functional Hazard Assessment Reference"),
@@ -1183,7 +1214,7 @@ CONCRETE_REQ_TYPES = [
     ty("SubsystemRequirement", "Subsystem Requirement",
        "A requirement on a subsystem inside an ATA system, such as the pressurisation "
        "control subsystem within ATA 21 or audio integrating within ATA 23.",
-       "SubsystemRequirement", numbering="n5LssRequirement", lifecycle=REQ_LIFECYCLE,
+       "SubsystemRequirement", numbering=f"{PREFIX}LssRequirement", lifecycle=REQ_LIFECYCLE,
        attributes=REQ_AVIATION_ATTRS + [
            a("subsystemLabel", "Subsystem"),
            a("ataSubject", "ATA Subject"),
@@ -1194,7 +1225,7 @@ CONCRETE_REQ_TYPES = [
        "A requirement on one item of equipment. This is the level that becomes a "
        "procurement specification for a bought item or a design specification for a part "
        "Light Speed Systems makes.",
-       "ComponentRequirement", numbering="n5LssRequirement", lifecycle=REQ_LIFECYCLE,
+       "ComponentRequirement", numbering=f"{PREFIX}LssRequirement", lifecycle=REQ_LIFECYCLE,
        attributes=REQ_AVIATION_ATTRS + [
            a("componentLabel", "Component"),
            a("targetPartNumber", "Implementing Part Number"),
@@ -1209,7 +1240,7 @@ CONCRETE_REQ_TYPES = [
        "a special condition or an equivalent safety finding. Kept as a requirement rather "
        "than only as a compliance item so the design can be traced to the rule it exists to "
        "satisfy, and so a rule change shows up as a suspect trace link.",
-       "SystemRequirement", numbering="n5LssRequirement", lifecycle=REQ_LIFECYCLE,
+       "SystemRequirement", numbering=f"{PREFIX}LssRequirement", lifecycle=REQ_LIFECYCLE,
        attributes=REQ_AVIATION_ATTRS + [
            a("regulationParagraph", "Regulation Paragraph", required=True),
            a("certificationBasis", "Certification Basis", lov=CERT_BASIS),

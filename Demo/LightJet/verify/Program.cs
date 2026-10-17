@@ -36,6 +36,7 @@ if (package is not null)
     // Every type file must parse and name a base that is either packaged or out of the box,
     // and no concrete type may grant canCreate - the first true flips the whole site to an
     // allowlist. Checking it here means a bad model cannot reach a site at all.
+    var prefix = m.Source.CompanyPrefix;
     var packagedTypes = m.Entries.Where(e => e.Kind == PackageEntryKinds.Type)
                                  .Select(e => e.Key)
                                  .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -49,8 +50,10 @@ if (package is not null)
         var baseName = root.GetProperty("baseTypeName").GetString()!;
         var isAbstract = root.GetProperty("abstract").GetBoolean();
 
-        if (!typeName.StartsWith("n5", StringComparison.Ordinal))
-            problems.Add($"{typeName}: does not start with the site prefix.");
+        if (prefix is not null && !typeName.StartsWith(prefix, StringComparison.Ordinal))
+            problems.Add($"{typeName}: does not start with the package's declared " +
+                         $"prefix '{prefix}'. A site refuses any type name that does not " +
+                         "start with its own configured companyPrefix.");
 
         if (!packagedTypes.Contains(baseName) && !OotbBases.Contains(baseName))
             problems.Add($"{typeName}: base '{baseName}' is neither packaged nor out of the box.");

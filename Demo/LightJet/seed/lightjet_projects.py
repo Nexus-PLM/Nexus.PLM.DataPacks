@@ -142,12 +142,38 @@ def wi(stem, pn, title, status, attrs, parent=None, notes=None):
 
 
 def _wbs(code, start, finish, pct, health, owner, priority="High", duration=None,
-         effort=None, **extra):
+         effort=None, leaf=False, pin=False, **extra):
+    """One work item's schedule fields.
+
+    `constraintType` is load-bearing and easy to get wrong. ASAP means "driven purely by
+    predecessors": the engine ignores plannedStart entirely and schedules the item from
+    the project start forward, so a whole plan collapses onto today and every bar lands
+    in the wrong year. The planned dates only take effect through a dated constraint.
+
+      SNET  start no earlier than - a floor. Right for ordinary work: the item cannot
+            start before its planned date, but a late predecessor may still push it
+            later, which is what produces honest float and honest lateness.
+      MSO   must start on - an inflexible pin, honoured even against predecessors.
+            Right for a committed milestone: an authority date does not move because
+            an upstream task slipped; the slip shows up as negative float instead.
+
+    `rollupMode` matters for the same reason. RollupFromChildren on an item with no
+    children has nothing to roll up and falls back to today, which is why every
+    milestone was showing today's date.
+    """
     row = {
         "wbsCode": code, "plannedStart": start, "plannedFinish": finish,
         "percentComplete": pct, "health": health, "assignedTo": owner,
-        "priority": priority, "rollupMode": "RollupFromChildren",
-        "constraintType": "ASAP",
+        "priority": priority,
+        "rollupMode": "Manual" if leaf else "RollupFromChildren",
+        # Leaf items are pinned with MSO, not SNET. SNET is only a FLOOR - it stops an
+        # item starting early but cannot pull it earlier - so every task planned before
+        # the view's project start still collapsed onto today. MSO is honoured even
+        # against predecessors, and where a predecessor overruns the pin the engine
+        # records the conflict rather than silently moving the date, which is exactly
+        # what a late programme should show.
+        "constraintType": "MSO" if (leaf or pin) else "SNET",
+        "constraintDate": start,
     }
     if duration is not None:
         row["durationDays"] = duration
@@ -202,14 +228,14 @@ WORK_ITEMS = [
     # ── Certification milestones ────────────────────────────────────────────
     wi("Milestone", "NX00200101", "Certification basis agreed with EASA", "Complete",
        _wbs("1.1.M1", "2025-06-27", "2025-06-27", 100, "On-Track", "g.rossi",
-            priority="Critical", milestoneCategory="Certification",
+            priority="Critical", leaf=True, pin=True, milestoneCategory="Certification",
             plannedDate="2025-06-27", forecastDate="2025-06-27",
             actualDate="2025-06-20", isMandatory=True),
        parent="NX00200010"),
 
     wi("Milestone", "NX00200102", "Level of involvement agreed with EASA", "Complete",
        _wbs("1.2.M1", "2026-05-15", "2026-05-15", 100, "On-Track", "g.rossi",
-            priority="Critical", milestoneCategory="Certification",
+            priority="Critical", leaf=True, pin=True, milestoneCategory="Certification",
             plannedDate="2026-05-15", forecastDate="2026-05-14",
             actualDate="2026-05-14", isMandatory=True),
        parent="NX00200020",
@@ -220,14 +246,14 @@ WORK_ITEMS = [
 
     wi("Milestone", "NX00200103", "Requirements baseline frozen", "Complete",
        _wbs("1.2.M2", "2026-05-14", "2026-05-14", 100, "On-Track", "s.vanderberg",
-            priority="High", milestoneCategory="Design",
+            priority="High", leaf=True, pin=True, milestoneCategory="Design",
             plannedDate="2026-05-14", forecastDate="2026-05-14",
             actualDate="2026-05-14", isMandatory=True),
        parent="NX00200020"),
 
     wi("Milestone", "NX00200104", "First flight, airframe 001", "Complete",
        _wbs("1.4.M1", "2026-06-30", "2026-06-30", 100, "On-Track", "l.harkness",
-            priority="Critical", milestoneCategory="Test",
+            priority="Critical", leaf=True, pin=True, milestoneCategory="Test",
             plannedDate="2026-06-30", forecastDate="2026-07-14",
             actualDate="2026-07-14", isMandatory=True),
        parent="NX00200040",
@@ -236,7 +262,7 @@ WORK_ITEMS = [
 
     wi("Milestone", "NX00200105", "Cabin interior certification complete", "Active",
        _wbs("1.4.M2", "2027-01-29", "2027-01-29", 56, "Late", "g.rossi",
-            priority="Critical", milestoneCategory="Certification",
+            priority="Critical", leaf=True, pin=True, milestoneCategory="Certification",
             plannedDate="2027-01-29", forecastDate="2027-03-19",
             isMandatory=True),
        parent="NX00200040",
@@ -246,7 +272,7 @@ WORK_ITEMS = [
 
     wi("Milestone", "NX00200106", "Type certificate issued", "Planning",
        _wbs("1.4.M3", "2027-09-30", "2027-09-30", 0, "At-Risk", "l.harkness",
-            priority="Critical", milestoneCategory="Certification",
+            priority="Critical", leaf=True, pin=True, milestoneCategory="Certification",
             plannedDate="2027-09-30", forecastDate="2027-11-12",
             isMandatory=True),
        parent="NX00200040"),
@@ -254,7 +280,7 @@ WORK_ITEMS = [
     wi("Milestone", "NX00200107", "Production organisation approval extended",
        "Planning",
        _wbs("1.5.M1", "2027-11-30", "2027-11-30", 0, "On-Track", "k.tanaka",
-            priority="High", milestoneCategory="Quality",
+            priority="High", leaf=True, pin=True, milestoneCategory="Quality",
             plannedDate="2027-11-30", forecastDate="2027-11-30",
             isMandatory=True),
        parent="NX00200050"),
@@ -312,22 +338,22 @@ WORK_ITEMS = [
     wi("Task", "NX00200301",
        "Release ATA 21 installation drawing set under DOA privilege", "Complete",
        _wbs("1.2.1.1", "2026-04-06", "2026-05-14", 100, "On-Track", "m.sandoval",
-            durationDays=29, effortHours=320, isMilestone=False, isSummary=False,
-            sortOrder=10, rollupMode="Manual"),
+            durationDays=29, effortHours=320, leaf=True, isMilestone=False, isSummary=False,
+            sortOrder=10),
        parent="NX00200201"),
 
     wi("Task", "NX00200302",
        "Complete system safety assessment for pressurisation control", "Complete",
        _wbs("1.2.1.2", "2026-02-02", "2026-04-30", 100, "On-Track", "s.vanderberg",
-            durationDays=64, effortHours=680, isMilestone=False, isSummary=False,
-            sortOrder=20, rollupMode="Manual"),
+            durationDays=64, effortHours=680, leaf=True, isMilestone=False, isSummary=False,
+            sortOrder=20),
        parent="NX00200201"),
 
     wi("Task", "NX00200303",
        "Redesign ram air inlet scoop for pressure recovery", "Active",
        _wbs("1.3.1.1", "2026-09-07", "2026-11-27", 46, "At-Risk", "m.sandoval",
-            durationDays=60, effortHours=420, isMilestone=False, isSummary=False,
-            sortOrder=30, rollupMode="Manual", priority="High"),
+            durationDays=60, effortHours=420, leaf=True, isMilestone=False, isSummary=False,
+            sortOrder=30, priority="High"),
        parent="NX00200206",
        notes="Against LSS-ECR-00002. Held in stress review: the change control board "
              "asked for the attachment stress case before it would disposition."),
@@ -335,15 +361,15 @@ WORK_ITEMS = [
     wi("Task", "NX00200304",
        "Run 16g dynamic test on passenger seat revision B", "Complete",
        _wbs("1.4.1.1", "2026-09-14", "2026-09-26", 100, "On-Track", "p.lindqvist",
-            durationDays=11, effortHours=180, isMilestone=False, isSummary=False,
-            sortOrder=10, rollupMode="Manual", priority="Critical"),
+            durationDays=11, effortHours=180, leaf=True, isMilestone=False, isSummary=False,
+            sortOrder=10, priority="Critical"),
        parent="NX00200204"),
 
     wi("Task", "NX00200305",
        "Release passenger seat dynamic test report", "Active",
        _wbs("1.4.1.2", "2026-09-28", "2026-10-16", 80, "Late", "p.lindqvist",
-            durationDays=15, effortHours=60, isMilestone=False, isSummary=False,
-            sortOrder=20, rollupMode="Manual", priority="Critical",
+            durationDays=15, effortHours=60, leaf=True, isMilestone=False, isSummary=False,
+            sortOrder=20, priority="Critical",
             isCriticalPath=True),
        parent="NX00200204",
        notes="On the critical path and late. Two compliance items, one milestone and one "
@@ -353,15 +379,15 @@ WORK_ITEMS = [
     wi("Task", "NX00200306",
        "Complete flammability testing for the forward divider variant", "Planning",
        _wbs("1.2.3.1", "2026-11-02", "2026-12-18", 0, "At-Risk", "m.sandoval",
-            durationDays=35, effortHours=240, isMilestone=False, isSummary=False,
-            sortOrder=40, rollupMode="Manual"),
+            durationDays=35, effortHours=240, leaf=True, isMilestone=False, isSummary=False,
+            sortOrder=40),
        parent="NX00200203"),
 
     wi("Task", "NX00200307",
        "Close the damage tolerance finding on the antenna doubler", "Active",
        _wbs("1.4.2.1", "2026-09-21", "2026-11-13", 35, "At-Risk", "p.lindqvist",
-            durationDays=40, effortHours=200, isMilestone=False, isSummary=False,
-            sortOrder=10, rollupMode="Manual", priority="High"),
+            durationDays=40, effortHours=200, leaf=True, isMilestone=False, isSummary=False,
+            sortOrder=10, priority="High"),
        parent="NX00200205",
        notes="Re-run the damage tolerance analysis against the fatigue spectrum actually "
              "used rather than the generic spectrum. This is the open finding on "
@@ -370,15 +396,15 @@ WORK_ITEMS = [
     wi("Task", "NX00200308",
        "Resolve Pyrosafe Materials probation findings", "Active",
        _wbs("1.3.2.1", "2026-07-06", "2026-11-30", 55, "Late", "y.cheng",
-            durationDays=106, effortHours=320, isMilestone=False, isSummary=False,
-            sortOrder=10, rollupMode="Manual", priority="High"),
+            durationDays=106, effortHours=320, leaf=True, isMilestone=False, isSummary=False,
+            sortOrder=10, priority="High"),
        parent="NX00200207"),
 
     wi("Task", "NX00200309",
        "Qualify an alternate source for the headset jack panel", "Planning",
        _wbs("1.3.2.2", "2026-11-02", "2027-03-26", 5, "At-Risk", "y.cheng",
-            durationDays=105, effortHours=280, isMilestone=False, isSummary=False,
-            sortOrder=20, rollupMode="Manual"),
+            durationDays=105, effortHours=280, leaf=True, isMilestone=False, isSummary=False,
+            sortOrder=20),
        parent="NX00200207",
        notes="Against LSS-ECR-00003. The last time buy date is 31 March 2027, which is "
              "the same week this task is due to finish. No float."),
@@ -386,8 +412,8 @@ WORK_ITEMS = [
     wi("Task", "NX00200310",
        "Complete delta first article on duct coupling revision B", "Active",
        _wbs("1.3.1.2", "2026-10-02", "2026-10-23", 70, "On-Track", "k.tanaka",
-            durationDays=16, effortHours=48, isMilestone=False, isSummary=False,
-            sortOrder=40, rollupMode="Manual"),
+            durationDays=16, effortHours=48, leaf=True, isMilestone=False, isSummary=False,
+            sortOrder=40),
        parent="NX00200206",
        notes="LSS-FAI-00004. Form 3 still open."),
 ]

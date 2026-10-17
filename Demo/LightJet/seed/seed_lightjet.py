@@ -59,6 +59,77 @@ OOTB_TYPES_DIR = Path(
 
 OOTB_DEFAULT_STATES = ["Draft", "In-work", "Released", "Obsolete"]
 
+# Every out-of-the-box change type (ECR, ECO, ECN, ProblemReport) starts at Draft.
+CHANGE_START_STATE = "Draft"
+
+# Ownership fields, most specific first. `assignee` on a card means "who has it now", and
+# the first of these a type sets is the best available answer.
+ASSIGNEE_FROM = ("assignee", "engineeringOwner", "requirementOwner", "custodian",
+                 "authorName", "checkedBy", "approvedBy")
+
+# The field each type already records its outcome in. A nonconformance closes with an MRB
+# disposition, a first article with a result, a supplier record with an approval status,
+# a compliance item with a compliance status.
+RESOLUTION_FROM = ("mrbDisposition", "faiResult", "approvalStatus", "complianceStatus",
+                   "testResult", "assessmentResult", "auditResult")
+
+# ChangeBase's `priority` for each change, so the boards and lists sort the way a change
+# board actually prioritises. Safety-related and certification-blocking changes are
+# Critical; an obsolescence case is High; a performance recovery is Medium.
+CHANGE_PRIORITY = {
+    "LSS-PR-00001": "Critical", "LSS-PR-00002": "Low", "LSS-PR-00003": "High",
+    "LSS-ECR-00001": "Critical", "LSS-ECR-00002": "Medium",
+    "LSS-ECR-00003": "High", "LSS-ECR-00004": "Critical",
+    "LSS-ECO-00001": "Critical", "LSS-ECO-00002": "Low", "LSS-ECO-00004": "Critical",
+    "LSS-ECN-00002": "Low", "LSS-ECN-00004": "Critical",
+}
+
+# The legal transition maps the Engine enforces, copied from the controllers that own
+# them: EcrsController, EcosController, EcnsController. A change type refuses any move
+# that is not an edge here, so a sequence that skips a state fails with a 400 part-way
+# through a load - which is a slow and expensive way to learn it. Validating the sequence
+# against these maps turns that into a dry-run failure.
+#
+# This IS duplication of the Engine's own tables. It is worth it because the alternative
+# is discovering a bad path on a live run, but it can drift: if a sequence fails here and
+# the Engine accepts it, re-read the controller and update this map.
+CHANGE_TRANSITIONS: dict[str, dict[str, list[str]]] = {
+    "ECR": {
+        "Draft": ["Submitted", "Cancelled"],
+        "Submitted": ["Under Review", "Cancelled"],
+        "Under Review": ["Approved", "Rejected"],
+        "Approved": [], "Rejected": [], "Cancelled": [],
+    },
+    "ECO": {
+        "Draft": ["Submitted", "Cancelled"],
+        "Submitted": ["Under Review", "Cancelled"],
+        "Under Review": ["Approved", "Rejected"],
+        "Approved": ["Released"],
+        "Released": ["Closed"],
+        "Closed": [], "Rejected": [], "Cancelled": [],
+    },
+    "ECN": {
+        "Draft": ["Submitted", "Cancelled"],
+        "Submitted": ["Under Review", "Cancelled"],
+        "Under Review": ["Approved", "Rejected"],
+        "Approved": ["Issued"],
+        "Issued": ["Closed"],
+        "Closed": [], "Rejected": [], "Cancelled": [],
+    },
+}
+
+# Fields that must be set before a change may ENTER a status (the mandatory-field gate).
+# Also copied from the controllers. A missing one is a 422 mid-load.
+CHANGE_REQUIRED_FOR_STATUS: dict[str, dict[str, list[str]]] = {
+    "ECR": {"Submitted": ["reason", "proposedSolution"],
+            "Under Review": ["justification"]},
+    "ECO": {"Submitted": ["reason", "implementationPlan"],
+            "Under Review": ["disposition"],
+            "Released": ["effectivityType", "effectivityValue"]},
+    "ECN": {"Submitted": ["changeSummary"],
+            "Issued": ["effectivityType", "effectivityValue"]},
+}
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Type registry: the packaged types plus the out-of-the-box ones
@@ -161,15 +232,34 @@ def all_records() -> list[dict]:
 
 
 def change_records() -> list[dict]:
-    """The out-of-the-box change objects, as plain records."""
+    """The out-of-the-box change objects, as plain records.
+
+    A change that carries a transition sequence is created at the state its sequence
+    starts FROM, not at the state it ends in. The Engine enforces the lifecycle, so
+    creating an ECR at Approved and then asking it to transition to Submitted is refused
+    outright. Walking it up is also what puts the change control board's comment on each
+    step of the audit trail, which is the part worth demonstrating.
+    """
     out = []
     for report in QA.PROBLEM_REPORTS:
-        out.append({"type": "ProblemReport", **report})
+        record = {"type": "ProblemReport", **report}
+        record["attrs"] = {"title": report["title"],
+                           "priority": CHANGE_PRIORITY.get(report["pn"], "High"),
+                           **report.get("attrs", {})}
+        out.append(record)
     for chain_def in QA.CHANGE_CHAINS:
         for kind, type_name in (("ecr", "ECR"), ("eco", "ECO"), ("ecn", "ECN")):
             change = chain_def.get(kind)
-            if change:
-                out.append({"type": type_name, "folder": QA.F_PR, **change})
+            if not change:
+                continue
+            record = {"type": type_name, "folder": QA.F_PR, **change}
+            record["attrs"] = {"title": change["title"],
+                               "priority": CHANGE_PRIORITY.get(change["pn"], "High"),
+                               **change.get("attrs", {})}
+            if record.get("transitions"):
+                record["status"] = CHANGE_START_STATE
+                record["history"] = [("A", CHANGE_START_STATE)]
+            out.append(record)
     return out
 
 
@@ -324,10 +414,32 @@ def validate(registry: dict[str, dict], notes: list[str] | None = None) -> list[
                 continue
             type_name = {"ecr": "ECR", "eco": "ECO", "ecn": "ECN"}[kind]
             states = live_states(registry, type_name)
+            if CHANGE_START_STATE not in states:
+                problems.append(f"{change['pn']}: {type_name} has no "
+                                f"'{CHANGE_START_STATE}' state to start from.")
+
+            # Every step has to be a legal edge, and every step's mandatory fields have
+            # to be set by the time it is taken.
+            legal = CHANGE_TRANSITIONS.get(type_name, {})
+            gates = CHANGE_REQUIRED_FOR_STATUS.get(type_name, {})
+            attrs = change.get("attrs", {})
+            at = CHANGE_START_STATE
             for status, _comment in change.get("transitions", []):
                 if status not in states:
                     problems.append(f"{change['pn']}: transition to '{status}' is not a "
                                     f"live {type_name} state.")
+                    continue
+                allowed = legal.get(at)
+                if allowed is not None and status not in allowed:
+                    problems.append(
+                        f"{change['pn']}: {type_name} cannot go '{at}' -> '{status}'. "
+                        f"Legal from '{at}': {', '.join(allowed) or 'nothing'}.")
+                for field in gates.get(status, []):
+                    if not str(attrs.get(field) or "").strip():
+                        problems.append(
+                            f"{change['pn']}: entering '{status}' requires "
+                            f"'{field}', which is not set.")
+                at = status
             for affected_pn, _action, revision in change.get("affects", []):
                 if affected_pn not in by_pn:
                     problems.append(f"{change['pn']}: affected item {affected_pn} does "
@@ -397,6 +509,11 @@ class Engine:
     def _call(self, method: str, path: str, **kwargs):
         response = self.session.request(method, f"{self.base}{path}", timeout=60,
                                         **kwargs)
+        # A GET that 404s is an answer - "there is nothing here" - and every existence
+        # guard below relies on it. Only a GET: a 404 on a write means the route or the
+        # target is wrong and must surface.
+        if response.status_code == 404 and method == "GET":
+            return None
         if response.status_code >= 400:
             raise RuntimeError(f"{method} {path} -> {response.status_code} "
                                f"{response.text[:400]}")
@@ -410,6 +527,11 @@ class Engine:
     def get(self, path):
         return self._call("GET", path)
 
+    def exists(self, path) -> bool:
+        """True when a GET answers 2xx. A 404 is an answer, not a failure."""
+        response = self.session.get(f"{self.base}{path}", timeout=60)
+        return 200 <= response.status_code < 300
+
     def put(self, path, body):
         return self._call("PUT", path, json=body)
 
@@ -418,6 +540,16 @@ class Engine:
 
     def patch(self, path, body):
         return self._call("PATCH", path, json=body)
+
+    def get_from(self, absolute_url: str):
+        """GET from another service - the Vault - carrying the same bearer token."""
+        response = self.session.get(absolute_url, timeout=60)
+        if response.status_code == 404:
+            return None
+        if response.status_code >= 400:
+            raise RuntimeError(f"GET {absolute_url} -> {response.status_code} "
+                               f"{response.text[:400]}")
+        return response.json() if response.content else None
 
     def post_to(self, absolute_url: str, body):
         """POST to another service - the Vault - carrying the same bearer token."""
@@ -455,6 +587,83 @@ def preflight(engine: Engine) -> list[str]:
     return problems
 
 
+FOLDER_SEPARATORS = ("||", "/")
+
+DEMO_PASSWORD = "Nexus2025!"
+
+
+def resolve_folder_ids(engine) -> dict[str, str]:
+    """Map every live classification folder's "/"-joined path to its id.
+
+    The Engine answers with a FLAT list of folder rows carrying `id`, `parentId`, `name`
+    and a `pathCache`. The cache uses the store's own separator, which is not "/", so the
+    path is rebuilt from the parent chain and the cache is only a fallback.
+    """
+    rows = engine.get("/api/classification/folders") or []
+    if isinstance(rows, dict):                      # a tree wrapper rather than a list
+        rows = rows.get("folders") or rows.get("items") or []
+    by_id = {r["id"]: r for r in rows if isinstance(r, dict) and r.get("id")}
+
+    def path_of(row) -> str:
+        parts, current, guard = [], row, 0
+        while current is not None and guard < 64:
+            parts.append(current.get("name") or "")
+            parent = current.get("parentId")
+            current = by_id.get(parent) if parent else None
+            guard += 1
+        return "/".join(reversed(parts))
+
+    paths: dict[str, str] = {}
+    for row in by_id.values():
+        paths[path_of(row)] = row["id"]
+        cache = row.get("pathCache")
+        if cache:
+            for separator in FOLDER_SEPARATORS:
+                if separator in cache:
+                    paths.setdefault(cache.replace(separator, "/"), row["id"])
+                    break
+    return paths
+
+
+def derive_priority(attrs: dict) -> str:
+    """Priority from what the record actually says, not a flat default.
+
+    A board where every card is Medium tells nobody anything. These are the signals an
+    aerospace programme really prioritises on: a safety impact, a catastrophic or
+    hazardous failure effect, a flight-safety-critical classification, an escape to a
+    customer, an open authority finding. Reading them off the record means the board
+    agrees with the data instead of being coloured in by hand.
+    """
+    def truthy(key):
+        return str(attrs.get(key) or "").strip().lower() in ("true", "yes", "1")
+
+    failure = str(attrs.get("failureEffectClassification") or "")
+    if (truthy("safetyImpact")
+            or attrs.get("severity") == "Critical"
+            or failure.startswith(("Catastrophic", "Hazardous"))
+            or attrs.get("airworthinessClassification") == "Flight Safety Critical"
+            or attrs.get("bulletinType") == "Mandatory"
+            or attrs.get("approvalStatus") in ("Probation", "Suspended")):
+        return "Critical"
+
+    if (truthy("escapeToCustomer")
+            or attrs.get("severity") == "Major"
+            or failure.startswith("Major")
+            or attrs.get("riskRating") in ("High", "Critical")
+            or str(attrs.get("openFindingCount") or "0") not in ("0", "", "None")
+            or attrs.get("complianceStatus") in ("Not compliant", "In work")
+            or attrs.get("obsolescenceStatus", "").startswith("Last time buy")
+            or attrs.get("testResult") == "Pass with deviation"):
+        return "High"
+
+    if (attrs.get("severity") == "Minor"
+            or attrs.get("complianceStatus") == "Compliant"
+            or attrs.get("itemMaturity") in ("Certified", "In production")):
+        return "Low"
+
+    return "Medium"
+
+
 def deterministic_id(part_number: str) -> str:
     """A stable object id per part number, so a re-run updates rather than duplicates."""
     return str(uuid.uuid5(uuid.NAMESPACE_URL,
@@ -487,12 +696,15 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
     for username, display, role, groups in D.USERS:
         if username in existing_users:
             continue
-        user_id = str(uuid.uuid4())
+        user_id = deterministic_id(f"user:{username}")
         engine.put(f"/api/users/{user_id}", {
             "id": user_id, "username": username, "displayName": display,
-            "accountType": role, "isActive": True, "password": "Nexus2025!",
-            "groupIds": [group_ids[g] for g in groups if g in group_ids],
+            "accountType": role, "isActive": True,
         })
+        engine.post(f"/api/users/{user_id}/set-password", {"password": DEMO_PASSWORD})
+        for group in groups:
+            if group in group_ids:
+                engine.post(f"/api/users/{user_id}/groups/{group_ids[group]}")
     say(f"users: {len(D.USERS)}")
 
     # ── Projects ────────────────────────────────────────────────────────────
@@ -509,19 +721,33 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
     say(f"projects: {len(PRJ.PROJECTS)}")
 
     # ── Classification folders ──────────────────────────────────────────────
-    # The customization set already carries the tree, so this only fills gaps.
-    folders = classification_folders()["folders"]
-    live_folders = {f.get("path") for f in (engine.get("/api/classification/folders")
-                                            or [])}
+    # The customization set already carries the tree, so normally this only resolves it.
+    # A folder is created by NAME under a PARENT ID - there is no create-by-path - so the
+    # tree is walked shallowest first and each level's id is remembered for the next.
+    folder_ids = resolve_folder_ids(engine)
     created = 0
-    for folder in folders:
-        if folder["path"] in live_folders:
+    for folder in sorted(classification_folders()["folders"],
+                         key=lambda f: f["path"].count("/")):
+        path = folder["path"]
+        if path in folder_ids:
             continue
-        engine.post("/api/classification/folders", {"path": folder["path"]})
-        created += 1
-    say(f"classification folders created: {created}")
+        parent_path, _, name = path.rpartition("/")
+        parent_id = folder_ids.get(parent_path) if parent_path else None
+        if parent_path and parent_id is None:
+            say(f"  ! cannot create {path!r}: parent is missing")
+            continue
+        result = engine.post("/api/classification/folders",
+                             {"name": name, "parentId": parent_id})
+        new_id = result.get("id") if isinstance(result, dict) else None
+        if new_id is None:            # the create answered with the tree, not the row
+            folder_ids = resolve_folder_ids(engine)
+            new_id = folder_ids.get(path)
+        if new_id:
+            folder_ids[path] = new_id
+            created += 1
+    say(f"classification folders: {len(folder_ids)} resolved, {created} created")
 
-    # ── Objects, with revision history ──────────────────────────────────────
+    # ── Objects, at their first revision ──────────────────────────────────────
     records = all_records() + change_records()
     ids: dict[str, str] = {}
     revision_ids: dict[tuple[str, str], str] = {}
@@ -537,41 +763,150 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
             "description": record.get("description"),
         })
 
+        # Only the FIRST revision here. The later ones come after the trace links, so
+        # that a link's review baseline is the revision that existed when it was made.
         history = record.get("history") or [(record.get("revision", "A"),
                                              record.get("status"))]
-        for label, status in history:
+        label, status = history[0]
+        revision_id = deterministic_id(f"{pn}#{label}")
+        revision_ids[(pn, label)] = revision_id
+        engine.put(f"/api/plmobjects/{object_id}/revisions/{revision_id}", {
+            "revisionId": revision_id, "plmObjectId": object_id,
+            "revision": label, "status": status,
+            "extensionData": "{}",
+        })
+    say(f"objects: {len(records)} (first revision)")
+
+    # ── Requirement parentage ───────────────────────────────────────────────
+    reparented = 0
+    for requirement in REQ.REQUIREMENTS:
+        parent = requirement.get("parent")
+        if not parent:
+            continue
+        engine.put(f"/api/requirements/{ids[requirement['pn']]}/parent",
+                   {"newParentPlmId": ids[parent]})
+        reparented += 1
+    say(f"requirement parentage: {reparented}")
+
+    # ── Trace links ─────────────────────────────────────────────────────────
+    existing_traces: set[tuple[str, str, str]] = set()
+    for pn in {l["source"] for l in REQ.TRACE_LINKS}:
+        for row in (engine.get(f"/api/requirement-trace-links/for/{ids[pn]}") or {}) \
+                .get("outgoing", []) or []:
+            existing_traces.add((ids[pn], row.get("target", {}).get("objectId", ""),
+                                 row.get("linkType") or ""))
+
+    created_traces = 0
+    for link in REQ.TRACE_LINKS:
+        key = (ids[link["source"]], ids[link["target"]], link["type"])
+        if key in existing_traces:
+            continue
+        body = {
+            "sourceObjectId": ids[link["source"]],
+            "targetObjectId": ids[link["target"]],
+            "linkType": link["type"],
+            "note": link.get("note"),
+        }
+        if link.get("pin"):
+            # The FIRST revision: a pin means "which revision this link is about", and
+            # the data's own notes say it is the revision the test was run on. Pinning to
+            # whatever happens to be latest is a no-op and tells the reader nothing.
+            target = next(r for r in records if r["pn"] == link["target"])
+            label = link.get("pinRevision") or \
+                (target.get("history") or [("A", None)])[0][0]
+            body["targetRevisionId"] = revision_ids[(link["target"], label)]
+        engine.post("/api/requirement-trace-links", body)
+        existing_traces.add(key)
+        created_traces += 1
+    say(f"trace links: {created_traces} created, "
+        f"{len(REQ.TRACE_LINKS) - created_traces} already present")
+
+    # ── Later revisions ─────────────────────────────────────────────────────
+    # After the trace links on purpose. A link holds the endpoint revisions the reviewer
+    # has seen, so revising a target NOW is what makes the links onto it suspect - which
+    # is what happened in the story this data tells. Create every revision up front and
+    # no link can ever be suspect, which quietly removes the best moment in the demo.
+    later = 0
+    for record in records:
+        pn = record["pn"]
+        for label, status in (record.get("history") or [])[1:]:
             revision_id = deterministic_id(f"{pn}#{label}")
             revision_ids[(pn, label)] = revision_id
-            engine.put(f"/api/plmobjects/{object_id}/revisions/{revision_id}", {
-                "revisionId": revision_id, "plmObjectId": object_id,
+            engine.put(f"/api/plmobjects/{ids[pn]}/revisions/{revision_id}", {
+                "revisionId": revision_id, "plmObjectId": ids[pn],
                 "revision": label, "status": status,
                 "extensionData": "{}",
             })
+            later += 1
+    say(f"later revisions: {later}")
 
-        # Attributes go on the latest revision only. PATCH rather than PUT so the
-        # Engine applies them through the attribute path that validates them.
-        latest_label = history[-1][0]
+    # ── Attributes and notes ────────────────────────────────────────────────
+    # On each object's LATEST revision, so this has to follow the step above. PATCH
+    # rather than PUT so the Engine applies them through the path that validates them.
+    for record in records:
+        pn = record["pn"]
+        history = record.get("history") or [(record.get("revision", "A"), None)]
+        latest = history[-1][0]
         attrs = {k: v for k, v in (record.get("attrs") or {}).items() if v is not None}
+        # A board card, a grid row and a search hit all read `title`. Default it from the
+        # object's description rather than making every record repeat itself.
+        declared = declared_attributes(registry, record["type"])
+        if "title" not in attrs and "title" in declared:
+            attrs["title"] = record.get("description") or record["pn"]
+        # Who has the ball: the first of the type's own ownership fields that is set.
+        if "assignee" not in attrs and "assignee" in declared:
+            holder = next((attrs[f] for f in ASSIGNEE_FROM if attrs.get(f)), None)
+            if holder:
+                attrs["assignee"] = holder
+        # The outcome, taken from whichever field this type already records it in.
+        if "resolution" not in attrs and "resolution" in declared:
+            outcome = next((attrs[f] for f in RESOLUTION_FROM if attrs.get(f)), None)
+            if outcome:
+                attrs["resolution"] = outcome
+        if "priority" not in attrs and "priority" in declared:
+            attrs["priority"] = derive_priority(attrs)
         if attrs:
             engine.patch(
-                f"/api/plmobjects/{object_id}/revisions/"
-                f"{revision_ids[(pn, latest_label)]}/attributes",
+                f"/api/plmobjects/{ids[pn]}/revisions/{revision_ids[(pn, latest)]}"
+                f"/attributes",
                 {k: (str(v).lower() if isinstance(v, bool) else v)
                  for k, v in attrs.items()})
-
         if record.get("notes"):
-            engine.patch(f"/api/plmobjects/{object_id}/notes",
-                         {"notes": record["notes"]})
-    say(f"objects: {len(records)}")
+            engine.patch(f"/api/plmobjects/{ids[pn]}/notes", {"notes": record["notes"]})
+    say("attributes and notes applied")
 
-    # ── Classification assignment ───────────────────────────────────────────
+    # ── Classification assignment ────────────────────────────────────────
+    # Runs after step C on purpose: it classifies the LATEST revision, which does not
+    # exist until the later revisions have been created.
+    # POST on an already-classified revision is an error, not a no-op, so an existing
+    # classification is left alone. Everything created with POST below is guarded the
+    # same way: a demo dataset gets reloaded the morning of a demo, and silently doubling
+    # its traceability would be worse than failing.
+    # A classification belongs to a REVISION, not to an object, and is keyed by folder id.
+    # /api/plmobjects/{id}/classifications is read-only apart from a consolidate action;
+    # the writer is a POST on the revision's own classification route.
+    classified, unresolved = 0, []
     for record in records:
         folder = record.get("folder")
         if not folder:
             continue
-        engine.post(f"/api/plmobjects/{ids[record['pn']]}/classifications",
-                    {"path": folder})
-    say("classification assigned")
+        folder_id = folder_ids.get(folder)
+        if folder_id is None:
+            unresolved.append(folder)
+            continue
+        pn = record["pn"]
+        label = (record.get("history") or [(record.get("revision", "A"), None)])[-1][0]
+        revision_id = revision_ids[(pn, label)]
+        if engine.exists(f"/api/plmobjects/{ids[pn]}/revisions/{revision_id}"
+                         f"/classification"):
+            continue
+        engine.post(f"/api/plmobjects/{ids[pn]}/revisions/{revision_id}/classification",
+                    {"folderId": folder_id, "values": None})
+        classified += 1
+    say(f"classified: {classified}")
+    if unresolved:
+        say(f"  ! {len(set(unresolved))} folder path(s) unresolved: "
+            f"{', '.join(sorted(set(unresolved))[:3])}")
 
     # ── Bill of materials ───────────────────────────────────────────────────
     for link in ST.ALL_BOM:
@@ -592,54 +927,54 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
                    body)
     say(f"bom links: {len(ST.ALL_BOM)}")
 
-    # ── Requirement parentage ───────────────────────────────────────────────
-    reparented = 0
-    for requirement in REQ.REQUIREMENTS:
-        parent = requirement.get("parent")
-        if not parent:
-            continue
-        engine.put(f"/api/requirements/{ids[requirement['pn']]}/parent",
-                   {"newParentPlmId": ids[parent]})
-        reparented += 1
-    say(f"requirement parentage: {reparented}")
-
-    # ── Trace links ─────────────────────────────────────────────────────────
-    for link in REQ.TRACE_LINKS:
-        body = {
-            "sourceObjectId": ids[link["source"]],
-            "targetObjectId": ids[link["target"]],
-            "linkType": link["type"],
-            "note": link.get("note"),
-        }
-        if link.get("pin"):
-            target = next(r for r in records if r["pn"] == link["target"])
-            label = (target.get("history") or [("A", None)])[-1][0]
-            body["targetRevisionId"] = revision_ids[(link["target"], label)]
-        engine.post("/api/requirement-trace-links", body)
-    say(f"trace links: {len(REQ.TRACE_LINKS)}")
-
     # ── Requirement baseline ────────────────────────────────────────────────
+    # Guarded: a baseline POST always creates one, so an unguarded reload leaves a pile
+    # of identical baselines and the compare view becomes a guessing game.
+    present = {x.get("name") for x in (engine.get("/api/requirements/baselines") or [])}
+    made = 0
     for baseline in REQ.BASELINES:
+        if baseline["name"] in present:
+            continue
         engine.post("/api/requirements/baselines", {
             "name": baseline["name"],
             "scopeObjectId": ids[baseline["scope"]] if baseline["scope"] else None,
             "notes": baseline["notes"],
         })
-    say(f"requirement baselines: {len(REQ.BASELINES)}")
+        made += 1
+    say(f"requirement baselines: {made} created, {len(present)} already present")
 
     # ── Work breakdown ──────────────────────────────────────────────────────
+    by_pn = {r["pn"]: r for r in records}
+    wbs_created = 0
     for parent, child in PRJ.WBS_LINKS:
-        link_id = deterministic_id(f"wbs:{parent}>{child}")
-        engine.put(f"/api/workitems/{ids[parent]}/children/{link_id}",
-                   {"childObjectId": ids[child]})
-    for predecessor, successor, kind, note in PRJ.TASK_DEPENDENCIES:
-        dependency_id = deterministic_id(f"dep:{predecessor}>{successor}")
-        engine.put(f"/api/workitems/dependencies/{dependency_id}", {
-            "predecessorId": ids[predecessor], "successorId": ids[successor],
-            "dependencyType": kind, "note": note,
+        present = {row.get("childObjectId") for row in
+                   (engine.get(f"/api/workitems/{ids[parent]}/children") or [])}
+        if ids[child] in present:
+            continue
+        attrs = by_pn[child].get("attrs") or {}
+        engine.post("/api/workitems/wbs-links", {
+            "parentObjectId": ids[parent], "childObjectId": ids[child],
+            "sortOrder": attrs.get("sortOrder") or 0,
+            "wbsCode": attrs.get("wbsCode"),
         })
-    say(f"wbs links: {len(PRJ.WBS_LINKS)}, dependencies: "
-        f"{len(PRJ.TASK_DEPENDENCIES)}")
+        wbs_created += 1
+    # The Engine takes the two-letter code, not a spelled-out name.
+    codes = {"FinishToStart": "FS", "StartToStart": "SS",
+             "FinishToFinish": "FF", "StartToFinish": "SF"}
+    dep_created = 0
+    for predecessor, successor, kind, _note in PRJ.TASK_DEPENDENCIES:
+        found = engine.get(f"/api/workitems/{ids[successor]}/dependencies") or {}
+        pres = {row.get("predecessorId") for row in (found.get("predecessors") or [])}
+        if ids[predecessor] in pres:
+            continue
+        engine.post("/api/workitems/dependencies", {
+            "predecessorId": ids[predecessor], "successorId": ids[successor],
+            "dependencyType": codes.get(kind, "FS"),
+            "lagDays": 0, "leadDays": 0, "crossProject": False,
+        })
+        dep_created += 1
+    say(f"wbs links: {wbs_created} created of {len(PRJ.WBS_LINKS)}, "
+        f"dependencies: {dep_created} created of {len(PRJ.TASK_DEPENDENCIES)}")
 
     # ── Project assignment ──────────────────────────────────────────────────
     assigned = 0
@@ -658,13 +993,21 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
             if not change:
                 continue
             change_id = ids[change["pn"]]
+            present = {row.get("affectedObjectId") for row in
+                       (engine.get(f"/api/{route}/{change_id}/affected-items") or [])}
             for affected_pn, action, revision in change.get("affects", []):
+                if ids[affected_pn] in present:
+                    continue
                 body = {"affectedObjectId": ids[affected_pn],
                         "changeAction": action,
                         "proposedRevision": revision}
                 engine.post(f"/api/{route}/{change_id}/affected-items", body)
-            for problem_pn in change.get("problems", []):
-                if route == "ecrs":
+            if route == "ecrs" and change.get("problems"):
+                linked = {row.get("problemObjectId") for row in
+                          (engine.get(f"/api/ecrs/{change_id}/problem-reports") or [])}
+                for problem_pn in change["problems"]:
+                    if ids[problem_pn] in linked:
+                        continue
                     engine.post(f"/api/ecrs/{change_id}/problem-reports",
                                 {"problemId": ids[problem_pn]})
             if route == "ecns" and change.get("distribution"):
@@ -674,7 +1017,13 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
                                  if g in group_ids],
                     "dueDays": 14,
                 })
-            for status, comment in change.get("transitions", []):
+            # Only the steps the change has not already taken. A reload must not try to
+            # walk a chain that is already at its end state.
+            current = engine.get(f"/api/plmobjects/{change_id}/revisions/latest") or {}
+            reached = str(current.get("status") or "")
+            sequence = [st for st, _ in change.get("transitions", [])]
+            start = sequence.index(reached) + 1 if reached in sequence else 0
+            for status, comment in change.get("transitions", [])[start:]:
                 engine.post(f"/api/{route}/{change_id}/transition",
                             {"toStatus": status, "comment": comment})
         if ecr and eco:
@@ -706,6 +1055,14 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
             pn = record["pn"]
             label = (record.get("history") or [(record.get("revision", "A"), None)])[-1][0]
             revision_id = revision_ids[(pn, label)]
+
+            # A reference the previous run already registered must not be registered
+            # again: POSTing the same reference id a second time answers 500, not 409,
+            # so there is no way to tell a duplicate from a real failure after the fact.
+            already = engine.get_from(f"{vault_url}/api/files?plmId={ids[pn]}") or []
+            if any((row or {}).get("fileName") == name for row in already):
+                attached += 1
+                continue
 
             with path.open("rb") as handle:
                 upload = engine.upload(f"{vault_url}/api/vault/upload", name, handle)

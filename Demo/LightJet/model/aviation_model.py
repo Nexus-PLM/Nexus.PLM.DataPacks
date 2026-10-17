@@ -27,9 +27,22 @@ assurance levels, DO-160G environmental qualification sections, AS9100D clauses,
 Rev C first article inspection and AS9145 APQP/PPAP.
 """
 
-PREFIX = "n5"
+# A site refuses any packaged type whose name does not start with ITS OWN configured
+# prefix - GET /api/types/config reports it as `companyPrefix`. The installer payload's
+# aviation stubs are "n5"; a given customer site may be anything two or three characters.
+# So the prefix is an environment variable rather than a literal, and the model, the seed
+# data and the package verifier all read this one value.
+#
+#     LIGHTJET_PREFIX=cst python model/build_customization.py
+#
+import os
+
+PREFIX = os.environ.get("LIGHTJET_PREFIX", "n5").strip() or "n5"
+if not 2 <= len(PREFIX) <= 3:
+    raise SystemExit(f"LIGHTJET_PREFIX must be 2 or 3 characters; got {PREFIX!r}.")
+
 COMPANY = "Light Speed Systems"
-BASE = "n5LightSpeedSystems"          # the existing company type-name stem
+BASE = f"{PREFIX}LightSpeedSystems"   # the company type-name stem
 PROGRAM = "NX-200"
 
 
@@ -289,7 +302,7 @@ def schema(name, description, segments):
 
 NUMBERING = [
     schema(
-        "n5LssAircraftPart",
+        f"{PREFIX}LssAircraftPart",
         "LSS-designed structural and mechanical parts. The ATA chapter is significant and "
         "each chapter sequences independently, e.g. LSS-21-0014.",
         [_seg("prefix", "LSS"), _seg("separator", "-"),
@@ -297,7 +310,7 @@ NUMBERING = [
          _seg("counter", digits=4)],
     ),
     schema(
-        "n5LssInstallation",
+        f"{PREFIX}LssInstallation",
         "Installation items - the ATA installation that puts equipment on the aircraft, "
         "e.g. LSS-21-INST-003.",
         [_seg("prefix", "LSS"), _seg("separator", "-"),
@@ -305,61 +318,61 @@ NUMBERING = [
          _seg("fixed", "INST"), _seg("separator", "-"), _seg("counter", digits=3)],
     ),
     schema(
-        "n5LssElectricalPart",
+        f"{PREFIX}LssElectricalPart",
         "LSS-designed electrical and avionics line-replaceable items, e.g. LSS-E-00042.",
         [_seg("prefix", "LSS-E"), _seg("separator", "-"), _seg("counter", digits=5)],
     ),
     schema(
-        "n5LssInteriorPart",
+        f"{PREFIX}LssInteriorPart",
         "Cabin furnishings and trim, e.g. LSS-F-00117.",
         [_seg("prefix", "LSS-F"), _seg("separator", "-"), _seg("counter", digits=5)],
     ),
     schema(
-        "n5LssHarness",
+        f"{PREFIX}LssHarness",
         "Wiring harnesses, ATA-significant, e.g. LSS-W23-007.",
         [_seg("prefix", "LSS-W"), _seg("lov", lov=ATA_CHAPTERS_IN_SCOPE),
          _seg("separator", "-"), _seg("counter", digits=3)],
     ),
     schema(
-        "n5LssSoftwareItem",
+        f"{PREFIX}LssSoftwareItem",
         "Airborne software configuration items under DO-178C, e.g. LSS-SW-0005.",
         [_seg("prefix", "LSS-SW"), _seg("separator", "-"), _seg("counter", digits=4)],
     ),
     schema(
-        "n5LssAehItem",
+        f"{PREFIX}LssAehItem",
         "Airborne electronic hardware items under DO-254, e.g. LSS-HW-0003.",
         [_seg("prefix", "LSS-HW"), _seg("separator", "-"), _seg("counter", digits=4)],
     ),
     schema(
-        "n5LssStandardPart",
+        f"{PREFIX}LssStandardPart",
         "Aerospace standard parts. The number is a cross-reference; the industry "
         "designation is held in the standardNumber attribute. e.g. LSS-STD-00231.",
         [_seg("prefix", "LSS-STD"), _seg("separator", "-"), _seg("counter", digits=5)],
     ),
     schema(
-        "n5LssVendorPart",
+        f"{PREFIX}LssVendorPart",
         "Supplier-designed bought items, e.g. LSS-V-00088.",
         [_seg("prefix", "LSS-V"), _seg("separator", "-"), _seg("counter", digits=5)],
     ),
     schema(
-        "n5LssTooling",
+        f"{PREFIX}LssTooling",
         "Production tooling, fixtures and ground support equipment, e.g. LSS-TL-0042.",
         [_seg("prefix", "LSS-TL"), _seg("separator", "-"), _seg("counter", digits=4)],
     ),
     schema(
-        "n5LssConsumable",
+        f"{PREFIX}LssConsumable",
         "Sealants, adhesives, finishes and fluids, e.g. LSS-CM-0019.",
         [_seg("prefix", "LSS-CM"), _seg("separator", "-"), _seg("counter", digits=4)],
     ),
     schema(
-        "n5LssDrawing",
+        f"{PREFIX}LssDrawing",
         "Engineering drawings, ATA-significant, e.g. LSS-DWG-25-0031.",
         [_seg("prefix", "LSS-DWG"), _seg("separator", "-"),
          _seg("lov", lov=ATA_CHAPTERS_IN_SCOPE), _seg("separator", "-"),
          _seg("counter", digits=4)],
     ),
     schema(
-        "n5LssSpecification",
+        f"{PREFIX}LssSpecification",
         "Specifications, sequenced per class: design, material, process, test, procurement, "
         "software requirements. e.g. LSS-SPEC-PRC-012.",
         [_seg("prefix", "LSS-SPEC"), _seg("separator", "-"),
@@ -367,12 +380,12 @@ NUMBERING = [
          _seg("separator", "-"), _seg("counter", digits=3)],
     ),
     schema(
-        "n5LssInterfaceControl",
+        f"{PREFIX}LssInterfaceControl",
         "Interface control documents, e.g. LSS-ICD-014.",
         [_seg("prefix", "LSS-ICD"), _seg("separator", "-"), _seg("counter", digits=3)],
     ),
     schema(
-        "n5LssCertificationDoc",
+        f"{PREFIX}LssCertificationDoc",
         "Certification deliverables, sequenced per kind: plan, compliance report, safety "
         "assessment, qualification, software/AEH plan, EMI report. e.g. LSS-CERT-COMP-021.",
         [_seg("prefix", "LSS-CERT"), _seg("separator", "-"),
@@ -380,7 +393,7 @@ NUMBERING = [
          _seg("separator", "-"), _seg("counter", digits=3)],
     ),
     schema(
-        "n5LssQualityRecord",
+        f"{PREFIX}LssQualityRecord",
         "Quality records, sequenced per kind: first article, nonconformance, certificate of "
         "conformity, airworthiness release, supplier approval. e.g. LSS-NCR-00117.",
         [_seg("prefix", "LSS"), _seg("separator", "-"),
@@ -388,19 +401,19 @@ NUMBERING = [
          _seg("separator", "-"), _seg("counter", digits=5)],
     ),
     schema(
-        "n5LssServiceBulletin",
+        f"{PREFIX}LssServiceBulletin",
         "Service bulletins, ATA-significant, e.g. LSS-SB-21-004.",
         [_seg("prefix", "LSS-SB"), _seg("separator", "-"),
          _seg("lov", lov=ATA_CHAPTERS_IN_SCOPE), _seg("separator", "-"),
          _seg("counter", digits=3)],
     ),
     schema(
-        "n5LssProcessSpec",
+        f"{PREFIX}LssProcessSpec",
         "Special process specifications, e.g. LSS-PS-0024.",
         [_seg("prefix", "LSS-PS"), _seg("separator", "-"), _seg("counter", digits=4)],
     ),
     schema(
-        "n5LssRequirement",
+        f"{PREFIX}LssRequirement",
         "Requirements, sequenced per level: aircraft, operator, system, subsystem, "
         "component and certification. The level is in the number because a requirement's "
         "level is how it is read in a review, e.g. LSS-REQ-SYS-0012.",
@@ -439,6 +452,17 @@ GROUPS = [
      "disposition other than scrap or return to supplier."),
     ("LSS Customer Support",
      "Service bulletins, in-service reporting and continued airworthiness."),
+    ("LSS Programme Management",
+     "Owns the programme plan, the gate reviews and the certification schedule. Reads "
+     "everything, approves nothing technical."),
+    ("LSS Project Management",
+     "Owns the work packages and tasks inside a project: assignment, dates, progress "
+     "and the critical path."),
+    ("FAA Designated Engineering Representatives",
+     "Individuals delegated by the FAA to find compliance on the Administrator's behalf. "
+     "A DER approves data within the limits of their delegated authority and nothing "
+     "outside it, which is why this is a group of its own rather than a seat in "
+     "Airworthiness."),
 ]
 
 
@@ -505,7 +529,7 @@ WF_PUBLICATION = "21a10000-0000-4000-a000-000000000006"
 
 WORKFLOWS = [
     workflow(
-        WF_TYPE_DESIGN, "n5LssTypeDesignRelease", "Type design data release",
+        WF_TYPE_DESIGN, "{PREFIX}LssTypeDesignRelease", "Type design data release",
         [
             _node("start", "Start", "Submit for release", 2, 0),
             _approver("design", "Design check", "LSS Design Engineering", 0, 2),
@@ -530,7 +554,7 @@ WORKFLOWS = [
         "originator with the reviewer's comment on the audit trail.",
     ),
     workflow(
-        WF_FAI, "n5LssFaiApproval", "First article inspection approval",
+        WF_FAI, "{PREFIX}LssFaiApproval", "First article inspection approval",
         [
             _node("start", "Start", "Submit FAI", 1, 0),
             _approver("quality", "Quality review (AS9102 Forms 1-3 complete)",
@@ -553,7 +577,7 @@ WORKFLOWS = [
         "ones the FAI covers.",
     ),
     workflow(
-        WF_MRB, "n5LssMrbDisposition", "Material review board disposition",
+        WF_MRB, "{PREFIX}LssMrbDisposition", "Material review board disposition",
         [
             _node("start", "Start", "Raise nonconformance", 1, 0),
             _approver("quality", "Quality containment review",
@@ -578,7 +602,7 @@ WORKFLOWS = [
         "Certification signature, so the decision and the signature sit on one trail.",
     ),
     workflow(
-        WF_COMPLIANCE, "n5LssComplianceAcceptance", "Means-of-compliance acceptance",
+        WF_COMPLIANCE, "{PREFIX}LssComplianceAcceptance", "Means-of-compliance acceptance",
         [
             _node("start", "Start", "Submit evidence", 1, 0),
             _approver("systems", "Systems engineering review",
@@ -600,7 +624,7 @@ WORKFLOWS = [
         "what the compliance checklist is later audited against.",
     ),
     workflow(
-        WF_SUPPLIER, "n5LssSupplierPartApproval", "Supplier part source approval",
+        WF_SUPPLIER, "{PREFIX}LssSupplierPartApproval", "Supplier part source approval",
         [
             _node("start", "Start", "Request source approval", 1, 0),
             _approver("supply", "Supply chain review", "LSS Supply Chain", 0, 2),
@@ -626,7 +650,7 @@ WORKFLOWS = [
         "technically.",
     ),
     workflow(
-        WF_PUBLICATION, "n5LssPublicationIssue", "Publication issue",
+        WF_PUBLICATION, "{PREFIX}LssPublicationIssue", "Publication issue",
         [
             _node("start", "Start", "Submit for issue", 1, 0),
             _approver("support", "Customer support review",
