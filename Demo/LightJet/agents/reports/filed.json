@@ -287,6 +287,10 @@
   "partNumber": "NI-00000701",
   "theme": "Unclassified"
  },
+ "Other|accounttype earlier error findings now resolved retraction": {
+  "partNumber": "NI-00000773",
+  "theme": "Fleet and continued airworthiness"
+ },
  "Other|accreditation checks demands holds nothing performing process": {
   "partNumber": "NI-00000752",
   "theme": "Data model and attribute coverage"
@@ -402,6 +406,10 @@
  "Other|airworthiness certification edit engineer gate inside report": {
   "partNumber": "NI-00000506",
   "theme": "Authorisation: data not protected"
+ },
+ "Other|airworthiness confirmed generates member off record sign": {
+  "partNumber": "NI-00000772",
+  "theme": "Change and approval process"
  },
  "Other|airworthiness generates never off record requested sign": {
   "partNumber": "NI-00000565",
@@ -630,6 +638,10 @@
  "Other|attributes compliance content empty get mid reader": {
   "partNumber": "NI-00000598",
   "theme": "Change and approval process"
+ },
+ "Other|audit broken certification compliance edit item made": {
+  "partNumber": "NI-00000771",
+  "theme": "Audit trail and change history"
  },
  "Other|audit class delete evidence held may quality": {
   "partNumber": "NI-00000686",
