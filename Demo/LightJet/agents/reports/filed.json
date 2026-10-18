@@ -51,6 +51,10 @@
   "partNumber": "NI-00000673",
   "theme": "Security tooling and refusal messages"
  },
+ "Engine API|administrator anyone deleted including object revisions": {
+  "partNumber": "NI-00000758",
+  "theme": "Authorisation: a role cannot do its job"
+ },
  "Engine API|administrator find message names non out reason": {
   "partNumber": "NI-00000716",
   "theme": "Authorisation: a role cannot do its job"
@@ -155,6 +159,10 @@
   "partNumber": "NI-00000543",
   "theme": "Authorisation: a role cannot do its job"
  },
+ "Other|403 account after compliance customer fix items": {
+  "partNumber": "NI-00000763",
+  "theme": "Authorisation: a role cannot do its job"
+ },
  "Other|403 accounttype ata drawing earlier every finding": {
   "partNumber": "NI-00000718",
   "theme": "Authorisation: a role cannot do its job"
@@ -167,6 +175,10 @@
   "partNumber": "NI-00000541",
   "theme": "Authorisation: a role cannot do its job"
  },
+ "Other|403 article decision design every fields first": {
+  "partNumber": "NI-00000766",
+  "theme": "Authorisation: a role cannot do its job"
+ },
  "Other|403 but current edit group names never": {
   "partNumber": "NI-00000542",
   "theme": "Authorisation: a role cannot do its job"
@@ -174,6 +186,10 @@
  "Other|403 certification editable entire part readable trail": {
   "partNumber": "NI-00000486",
   "theme": "Authorisation: data not protected"
+ },
+ "Other|403 manufacturing owns process revise revise specifications": {
+  "partNumber": "NI-00000761",
+  "theme": "Authorisation: a role cannot do its job"
  },
  "Other|405 create every nonconformance object quality raise": {
   "partNumber": "NI-00000536",
@@ -219,6 +235,10 @@
   "partNumber": "NI-00000660",
   "theme": "Data model and attribute coverage"
  },
+ "Other|accepted authority compliance der finding item record": {
+  "partNumber": "NI-00000760",
+  "theme": "Authorisation: a role cannot do its job"
+ },
  "Other|accepted been compliancereport evidence has nobody record": {
   "partNumber": "NI-00000723",
   "theme": "Change and approval process"
@@ -242,6 +262,10 @@
  "Other|access api get inspect inspecting own refuses": {
   "partNumber": "NI-00000672",
   "theme": "Security tooling and refusal messages"
+ },
+ "Other|access bom caller children list read refused": {
+  "partNumber": "NI-00000759",
+  "theme": "Authorisation: a role cannot do its job"
  },
  "Other|account accounttype create every from has rights": {
   "partNumber": "NI-00000687",
@@ -567,6 +591,10 @@
   "partNumber": "NI-00000562",
   "theme": "Change and approval process"
  },
+ "Other|assignee compliance edit report transition": {
+  "partNumber": "NI-00000765",
+  "theme": "Authorisation: a role cannot do its job"
+ },
  "Other|attribute audit events guid instead key list": {
   "partNumber": "NI-00000553",
   "theme": "Audit trail and change history"
@@ -634,6 +662,10 @@
  "Other|batch consumable controlled delete granted manufacturing traceable": {
   "partNumber": "NI-00000561",
   "theme": "Change and approval process"
+ },
+ "Other|behind create creates exist leaves object one": {
+  "partNumber": "NI-00000762",
+  "theme": "Authorisation: a role cannot do its job"
  },
  "Other|between breakdown change delivers link task that": {
   "partNumber": "NI-00000611",
@@ -739,6 +771,10 @@
   "partNumber": "NI-00000688",
   "theme": "Change and approval process"
  },
+ "Other|chain ecr exist field first hop link": {
+  "partNumber": "NI-00000768",
+  "theme": "Change and approval process"
+ },
  "Other|change change end from link navigable only": {
   "partNumber": "NI-00000714",
   "theme": "Authorisation: a role cannot do its job"
@@ -839,9 +875,21 @@
   "partNumber": "NI-00000538",
   "theme": "Authorisation: a role cannot do its job"
  },
+ "Other|correct engineer one own owning part release": {
+  "partNumber": "NI-00000756",
+  "theme": "Authorisation: data not protected"
+ },
+ "Other|correction diagnosis edit grant group own own": {
+  "partNumber": "NI-00000770",
+  "theme": "Unclassified"
+ },
  "Other|cross dangling drawings free integrity object references": {
   "partNumber": "NI-00000610",
   "theme": "Traceability and navigation"
+ },
+ "Other|current edit gated never object object released": {
+  "partNumber": "NI-00000757",
+  "theme": "Authorisation: a role cannot do its job"
  },
  "Other|declared default draft lifecycle material one seven": {
   "partNumber": "NI-00000697",
@@ -911,6 +959,10 @@
   "partNumber": "NI-00000733",
   "theme": "Traceability and navigation"
  },
+ "Requirements|assembly child drawn impact inside level link": {
+  "partNumber": "NI-00000769",
+  "theme": "Traceability and navigation"
+ },
  "Requirements|break change requirement see way what would": {
   "partNumber": "NI-00000669",
   "theme": "Change impact and revision comparison"
@@ -931,6 +983,10 @@
   "partNumber": "NI-00000630",
   "theme": "Fleet and continued airworthiness"
  },
+ "Requirements|check coded created draft hard links most": {
+  "partNumber": "NI-00000767",
+  "theme": "Authorisation: a role cannot do its job"
+ },
  "Requirements|computes invisible link links nothing surfaces suspect": {
   "partNumber": "NI-00000485",
   "theme": "Authorisation: data not protected"
@@ -941,6 +997,10 @@
  },
  "Requirements|create engineer icd raise requirement route systems": {
   "partNumber": "NI-00000528",
+  "theme": "Authorisation: a role cannot do its job"
+ },
+ "Requirements|engineering objects omits operatorrequirement requirements saying systems": {
+  "partNumber": "NI-00000764",
   "theme": "Authorisation: a role cannot do its job"
  },
  "Schedule|100 already complete feeds hides logic percent": {

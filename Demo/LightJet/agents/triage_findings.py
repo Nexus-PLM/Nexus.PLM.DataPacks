@@ -196,6 +196,28 @@ EXCESS_WORDS = ("no permission check", "no authorisation check", "writable", "de
                 "not enforced", "self-released", "accept their own")
 
 
+# The agents label their own revisions, and those labels are better evidence than any
+# guess this tool can make from wording. A finding that says it was re-tested after the
+# accountType correction is filed; one that says it was withdrawn is dropped entirely,
+# neither filed nor held. Only an unlabelled denial is held back for checking.
+RETESTED_MARKERS = ("re-tested", "retested", "retest after", "confirmed after",
+                    "stands:", ", stands", "still 403", "survives the fix",
+                    "after the accounttype fix", "post-fix")
+WITHDRAWN_MARKERS = ("withdrawn", "withdrawal", "retracted", "superseded by",
+                     "corrected -", "corrected:")
+
+
+def declares(row: dict, markers: tuple) -> bool:
+    """True when the reporter labelled this row with one of `markers`."""
+    text = " ".join(str(row.get(k) or "") for k in ("summary", "detail")).lower()
+    return any(m in text for m in markers)
+
+
+def is_withdrawn(row: dict) -> bool:
+    """A row the reporter withdrew. Not a card, and not a gap either."""
+    return declares(row, WITHDRAWN_MARKERS)
+
+
 def needs_retest(row: dict) -> bool:
     """True when a finding could be the accountType defect rather than the product.
 
@@ -206,7 +228,7 @@ def needs_retest(row: dict) -> bool:
     revised" - purely because the summary contains "can never", when three agents had
     re-tested it against corrected accounts and I had confirmed the cause in source.
     """
-    if row.get("retested"):
+    if row.get("retested") or declares(row, RETESTED_MARKERS):
         return False
     if row.get("category") != "security":
         return False
@@ -436,6 +458,8 @@ def main() -> int:
         row["theme"] = theme_of(row)
 
     ledger = load_ledger()
+    withdrawn = [r for r in merged if is_withdrawn(r)]
+    merged = [r for r in merged if not is_withdrawn(r)]
     held = [r for r in merged if needs_retest(r)]
     merged = [r for r in merged if not needs_retest(r)]
     already = [r for r in merged if key_of(r) in ledger]
@@ -445,6 +469,9 @@ def main() -> int:
           f"{len({r['reporter'] for r in rows})} agent(s) -> {len(merged)} card(s)")
     if already:
         print(f"{len(already)} already on the board, left alone. {len(todo)} to file.")
+    if withdrawn:
+        print(f"{len(withdrawn)} finding(s) WITHDRAWN by their own reporter - not filed, "
+              f"and not counted as a gap either.")
     if held:
         print(f"{len(held)} security denial(s) HELD BACK for re-test - these may be the "
               f"accountType defect in the demo dataset rather than the product. "
