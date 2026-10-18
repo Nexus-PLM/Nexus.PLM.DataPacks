@@ -83,56 +83,92 @@ ALIASES = {
 
 LEDGER = REPORTS / "filed.json"
 
-# ── Themes ──────────────────────────────────────────────────────────────────────
-# Ordered: the first rule that matches wins, so the most specific cause comes first. A
-# finding is placed on its CAUSE, not on the screen it was seen through - a missing
-# permission check found in the Schedule is an authorisation finding, not a schedule one.
+# ── Themes ─────────────────────────────────────────────────────────────────────
+# Ordered: the first rule that matches wins, so the most specific cause comes first.
+#
+# The needles are matched against the SUMMARY and the app, never the detail. Matching the
+# detail put 91 of 165 findings in one theme, because a paragraph explaining a permission
+# problem naturally mentions release, workflow, approval and access all at once. The
+# summary is the one line the reporter chose to describe the thing, so it is the only
+# field that discriminates.
 THEMES = [
-    ("Authorisation and separation of duties",
-     "Permission checks that are absent, applied in the wrong direction, or let one "
-     "person hold two roles that must stay apart.",
-     ("permission", "unauthoris", "unauthoriz", "403", "authoris", "authoriz", "role",
-      "separation of duties", "canedit", "cantransition", "canapprove", "privilege",
-      "access", "released object", "signed", "approval in", "on behalf")),
+    ("Authorisation: data not protected",
+     "Writes and reads that succeed when they should be refused - absent permission "
+     "checks, released data still editable, and information disclosed to the wrong role.",
+     ("no permission check", "performs no authorisation", "no authorisation check",
+      "writable", "deletable", "candelete=true", "can edit", "can author",
+      "can be rewritten", "not frozen", "readable", "visible", "discloses",
+      "disclosing", "bypass", "bypassing", "silently re-configures", "ungated",
+      "not enforced", "straight to released", "self-released", "accept their own",
+      "without that user", "under a der identity", "one-way trapdoor")),
+
+    ("Authorisation: a role cannot do its job",
+     "Denials in the other direction: a role refused the thing it exists to do. Re-test "
+     "each of these - the demo accounts carried an accountType that matched no policy "
+     "row, and that alone produced denials that look like policy.",
+     ("cannot", "can never", "denied", "refused", "403", "no write access",
+      "belong to no project", "is 403", "invisible", "not navigable")),
+
+    ("Audit trail and change history",
+     "What the record says happened, and whether it matches what did.",
+     ("audit trail", "change history", "two identical", "old or new value",
+      "did not happen", "not written to")),
 
     ("Change and approval process",
      "The ECR/ECO/ECN route, release workflows, transition gates and the tasks they "
      "should create.",
-     ("ecr", "eco", "ecn", "transition", "workflow", "release", "approval route",
-      "disposition", "change board", "sign-off", "signoff", "my tasks", "task created",
-      "supersede", "effectivity")),
+     ("ecr", "eco", "ecn", "transition", "workflow", "approval route", "disposition",
+      "change board", "sign-off", "signoff", "my tasks", "no task", "supersede",
+      "effectivity", "material review board", "approval", "compliance item",
+      "change order", "submitforrelease", "accept or raise a finding")),
 
     ("Traceability and navigation",
      "Relationships that exist only as text, links that do not go suspect, and chains "
-     "that cannot be walked from one end to the other.",
+     "that cannot be walked end to end.",
      ("trace", "suspect", "navigab", "reference", "link", "where used", "where_used",
-      "bom-parent", "bom-children", "chain", "audit trail", "text field", "free text",
-      "baseline")),
+      "bom-parent", "bom-children", "chain", "text, not a link", "baseline",
+      "drawing that does not exist", "not discoverable", "free text")),
 
     ("Fleet and continued airworthiness",
      "Delivered aircraft: as-built configuration, service bulletins, effectivity, "
-     "inspections and in-service findings.",
+     "inspections, maintenance programme and in-service occurrences.",
      ("fleet", "aircraft", "airframe", "service bulletin", "bulletin", "as-built",
       "asbuilt", "in-service", "operator", "airworthiness directive", "calendar life",
-      "life limit", "msn", "registration")),
+      "life limit", "maintenance programme", "ica", "inspection", "occurrence")),
 
     ("Quality and conformity",
      "Nonconformances, material review, first article inspection and the AS9102 forms.",
-     ("nonconform", "ncr", "first article", "fai", "as9102", "material review", "mrb",
-      "conformity", "waiver", "deviation", "batch", "shelf life", "certificate of conformity")),
+     ("nonconform", "ncr", "first article", "fai", "as9102", "mrbdisposition",
+      "conformity", "waiver", "deviation", "batch", "shelf life", "coc",
+      "calibration", "measuring device")),
 
     ("Schedule and work management",
-     "The work breakdown, the Gantt, forecasts, assignment and programme health.",
+     "The work breakdown, the Gantt, forecasts, assignment, cost and programme health.",
      ("schedule", "gantt", "forecast", "critical path", "percentcomplete", "milestone",
-      "work package", "work breakdown", "wbs", "constrainttype", "programme health",
-      "assignedto", "zoom")),
+      "work package", "work breakdown", "work item", "wbs", "constrainttype",
+      "earned value", "cost actuals", "zoom", "timeline")),
 
     ("Data model and attribute coverage",
-     "Fields that do not exist, defaults that are wrong every time, and attributes "
-     "whose meaning has to be guessed.",
-     ("attribute", "field", "default", "no place to record", "nowhere to record",
-      "nowhere to put", "data model", "type definition", "value attribute", "units",
-      "allowed values", "enum", "declared default", "mass status")),
+     "Fields that do not exist, defaults wrong every time, vocabularies that disagree, "
+     "and attributes whose meaning has to be guessed.",
+     ("attribute", "field", "default", "nowhere to record", "no place to record",
+      "nowhere to put", "data model", "value attribute", "list-of-values", "lov",
+      "vocabular", "duplicates", "contradicts", "named three different ways",
+      "no file or cad", "notes", "numbering", "part number", "schema",
+      "isown", "discussion message")),
+
+    ("Change impact and revision comparison",
+     "The questions a change always raises and the product cannot answer: what does "
+     "this break, what moved between these two revisions, and is this fit to release.",
+     ("change-impact", "change impact", "what a change breaks", "would break",
+      "compare two revisions", "revision against the last", "release-readiness",
+      "readiness gate", "revision rule", "follows", "no way to compare")),
+
+    ("Security tooling and refusal messages",
+     "The security model may be right, but nobody can see why. Inspection a user cannot "
+     "run on themselves, and refusals that do not say what was wrong.",
+     ("inspect", "does not say whether", "enumerate", "user directory",
+      "error message", "bare 403", "empty body", "no reason")),
 
     ("Nova (AI assistant)",
      "The agentic service: retrieval, indexing, health and what it tells the user when "
@@ -148,15 +184,32 @@ UNCLASSIFIED = (
     (),
 )
 
+# Denial words. A security finding that reports a DENIAL may be an artefact of the
+# accountType defect in the demo dataset rather than a product fault, so it is flagged
+# for re-test instead of being filed as a Critical nobody can reproduce. A finding that
+# reports EXCESS access is never excused this way: the "*" row still granted read and
+# edit-Own, so anything beyond that was genuinely reachable.
+DENIAL_WORDS = ("cannot", "can never", "denied", "refused", "403", "no write access",
+                "is 403", "no access", "not permitted", "blocked")
+EXCESS_WORDS = ("no permission check", "no authorisation check", "writable", "deletable",
+                "can edit", "can author", "bypass", "discloses", "readable", "visible",
+                "not enforced", "self-released", "accept their own")
+
+
+def needs_retest(row: dict) -> bool:
+    """True when a finding could be the accountType defect rather than the product."""
+    if row.get("category") != "security":
+        return False
+    text = (row.get("summary") or "").lower()
+    if any(word in text for word in EXCESS_WORDS):
+        return False
+    return any(word in text for word in DENIAL_WORDS)
+
 
 def theme_of(row: dict) -> str:
     """Which theme a finding belongs to. Deliberately explicit and auditable."""
     haystack = " ".join(str(row.get(k) or "") for k in
-                        ("summary", "detail", "foundInApp", "stepsToReproduce",
-                         "expectedResult", "actualResult")).lower()
-    # A security finding is about authorisation wherever it was seen.
-    if row.get("category") == "security":
-        return THEMES[0][0]
+                        ("summary", "foundInApp")).lower()
     for name, _description, needles in THEMES:
         if any(needle in haystack for needle in needles):
             return name
@@ -257,7 +310,13 @@ def create_issue(admin: Agent, title: str, issue_type: str, severity: str,
                  notes: str) -> tuple[str, str, str]:
     """Create one NexusIssue card. Returns (part number, object id, revision id)."""
     number = admin.get(f"/api/partnumbers/next/{ISSUE_TYPE}")
-    part_number = number if isinstance(number, str) else         (number or {}).get("partNumber") or (number or {}).get("number")
+    # The endpoint answers {"value": "NI-00000481"}. It has also been seen to answer a
+    # bare string, and "partNumber"/"number" are the names the rest of the API uses, so
+    # all four are accepted rather than guessing which one this build returns.
+    part_number = number if isinstance(number, str) else next(
+        (v for v in ((number or {}).get(k)
+                     for k in ("value", "partNumber", "number", "nextNumber")) if v),
+        None)
     if not part_number:
         raise RuntimeError(f"could not mint a number: {number!r}")
 
@@ -367,6 +426,8 @@ def main() -> int:
         row["theme"] = theme_of(row)
 
     ledger = load_ledger()
+    held = [r for r in merged if needs_retest(r)]
+    merged = [r for r in merged if not needs_retest(r)]
     already = [r for r in merged if key_of(r) in ledger]
     todo = [r for r in merged if key_of(r) not in ledger]
 
@@ -374,7 +435,58 @@ def main() -> int:
           f"{len({r['reporter'] for r in rows})} agent(s) -> {len(merged)} card(s)")
     if already:
         print(f"{len(already)} already on the board, left alone. {len(todo)} to file.")
+    if held:
+        print(f"{len(held)} security denial(s) HELD BACK for re-test - these may be the "
+              f"accountType defect in the demo dataset rather than the product. "
+              f"They are not filed; see the cause card.")
     print()
+
+    if held and args.file and "cause:accounttype" not in ledger:
+        admin_now = Agent("admin", password="NexusAdmin2026!",
+                          role="PLM Administrator")
+        detail = [
+            "The NX-200 demo dataset created its users with accountType \"User\". The "
+            "Engine evaluates policy against exactly three account types - Admin, Member "
+            "and Guest (PackageValidator rejects any other role subject, and SeedService "
+            "issues \"Member\" to an ordinary user). \"User\" matches no permission row, "
+            "so all thirteen non-admin demo users fell through to the \"*\" row: read, "
+            "edit-Own, and NO create.",
+            "",
+            "GET /api/security/inspect states it plainly: matchedSubject was \"the \\\"*\\\" "
+            "row (everyone else)\". After correcting the accounts it reads \"the "
+            "role:Member row\" with canCreate=True.",
+            "",
+            f"That one word produced {len(held)} security finding(s) reporting that a role "
+            "could not do the thing it exists to do - customer support unable to raise a "
+            "problem report, the project manager unable to create a work item. Those are "
+            "NOT filed as product defects. They are listed below and are being re-tested "
+            "against corrected accounts; whatever still fails will be filed on its own "
+            "merits.",
+            "",
+            "Findings in the OTHER direction are unaffected and are filed as real: the "
+            "\"*\" row still granted read and edit-Own, so anything reachable beyond that "
+            "was genuinely reachable.",
+            "",
+            "Held back for re-test:",
+        ] + [f"  - [{r['severity']}] {r['summary']}" for r in held]
+        number, _oid, _rid = create_issue(
+            admin_now,
+            "Demo dataset accountType \"User\" matched no policy row - permission "
+            "findings held for re-test",
+            "Task", "Major", "Claude", "Other",
+            {"workItemKind": "Task", "targetRelease": "Triage",
+             "stepsToReproduce": "Create a user with accountType \"User\", then attempt "
+                                 "to create any object of a type with the default policy.",
+             "expectedResult": "Either the account type is rejected at creation, or an "
+                               "unrecognised account type is reported rather than "
+                               "silently matching no row.",
+             "actualResult": "Creation is refused with a bare 403 and the cause is only "
+                             "visible through /api/security/inspect.",
+             "docsUpdated": "Not needed"},
+            "\n".join(detail))
+        ledger["cause:accounttype"] = {"partNumber": number, "theme": "Triage"}
+        save_ledger(ledger)
+        print(f"  {number:<14} cause card for the {len(held)} held finding(s)\n")
 
     counts: dict[str, int] = defaultdict(int)
     for row in todo:
