@@ -96,22 +96,33 @@ def walk(me: Agent, start: str, depth: int = 4):
             if target:
                 visit(target, level + 1, f"installed on {pn}", pn)
 
-        # 3b. The reverse lookups, attempted rather than assumed.
+        # 3b. The reverse direction, via the route that actually serves it.
         #
-        # Asking "which change objects name me as an affected item" and "which objects
-        # reference me" is how you get from a finding on an aeroplane to the change it
-        # caused. Neither route exists: affected-items is only {changeId}/affected-items,
-        # and references are loaded only for a source revision
-        # (ObjectReferencesController.LoadForSourceRevisionAsync). These calls are left in
-        # so the gap is demonstrated by its own 404 rather than taken on trust.
-        for route, label in ((f"/api/plmobjects/{object_id(pn)}/affected-by",
-                              "change objects naming this as affected"),
-                             (f"/api/plmobjects/{object_id(pn)}/referenced-by",
-                              "objects referencing this")):
-            if me.get(route) is None:
-                # Recorded once, not once per object. A missing route is one fact about
-                # the API, and repeating it per object buries the chain it is reporting on.
-                missing_routes.add(label + " (no such endpoint)")
+        # This probed /affected-by and /referenced-by, got 404 from both, and concluded the
+        # product had no reverse navigation. It was the wrong conclusion from the wrong URL:
+        # GET /api/plmobjects/{id}/related answers every direction at once - "changes",
+        # "problems", "referenced-by", "bom-parents", "bom-children" and more - and
+        # RelatedGraphService was built precisely because "which changes affect this part?"
+        # had no reverse lookup. Asking it from aeroplane 002 reaches LSS-PR-00004 and
+        # LSS-ECR-00005 in one hop.
+        #
+        # The lesson is the same one the accountType typo taught: when an instrument reports
+        # that the product cannot do something, check the instrument first.
+        related = me.get(f"/api/plmobjects/{object_id(pn)}/related")
+        if related is None:
+            missing_routes.add("the related graph (/related) returned nothing")
+        else:
+            groups = related.get("groups") if isinstance(related, dict) else related
+            if isinstance(groups, dict):
+                groups = [{"key": k, "items": v} for k, v in groups.items()]
+            for group in groups or []:
+                key = group.get("key") or group.get("name") or "related"
+                if key in ("projects", "classification", "folders", "contacts", "markups"):
+                    continue          # filing, not causation
+                for item in group.get("items") or []:
+                    target = item.get("partNumber")
+                    if target and not item.get("restricted"):
+                        visit(target, level + 1, f"{key} of {pn}", pn)
 
         # 4. Requirement traces.
         traces = me.traces(pn)
