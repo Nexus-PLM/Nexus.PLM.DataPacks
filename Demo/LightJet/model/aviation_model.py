@@ -480,6 +480,18 @@ GROUPS = [
 # Workflows
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Node types that carry a polymorphic discriminator. The workflow designer deserialises
+# nodes by `$nodeType`, not by `NodeType`: without it an Approver node loads as a base
+# node with no approver fields, and the designer's render map then calls a node renderer
+# that does not exist - "zD is not a function or its return value is not iterable", and
+# the whole page replaced by "Workflow could not be displayed".
+#
+# Start and End nodes carry no discriminator, which is why copying one of those as the
+# template for every node hid the problem. Every out-of-the-box workflow has it on its
+# Approver and Status nodes; none of these did until it crashed the designer.
+DISCRIMINATED_NODES = {"Approver", "Status", "Action"}
+
+
 def _node(node_id, node_type, title, row, col, **extra):
     node = {
         "Id": node_id, "NodeType": node_type, "Title": title,
@@ -490,6 +502,9 @@ def _node(node_id, node_type, title, row, col, **extra):
         "ApprovalMode": None, "RequiredApprovalCount": 0,
     }
     node.update(extra)
+    if node_type in DISCRIMINATED_NODES:
+        # Written first in the serialised object, as the out-of-the-box files have it.
+        return {"$nodeType": node_type, **node}
     return node
 
 
@@ -507,8 +522,22 @@ def _status(node_id, title, status, row, col):
 
 
 def _conn(cid, src, dst, reject=False):
-    return {"Id": cid, "SourceNodeId": src, "SourceSide": "right",
-            "TargetNodeId": dst, "TargetSide": "left", "IsRejectPath": reject}
+    """One connection between two nodes.
+
+    The side names are CAPITALISED, and that is not cosmetic. The workflow designer
+    resolves a connection's anchor point through a lookup keyed on "Left"/"Right"/
+    "Top"/"Bottom". A lowercase "right" misses the lookup, the lookup returns undefined,
+    and the designer's map over connections then tries to call it - "zD is not a
+    function or its return value is not iterable", and the entire page is replaced by
+    "Workflow could not be displayed".
+
+    The route still EXECUTES correctly with lowercase sides, because the server never
+    reads them: tasks were created, routed to the right groups and completed. Only the
+    drawing of it breaks, which is the worst kind of bug to carry into a demonstration -
+    everything works until somebody opens the picture.
+    """
+    return {"Id": cid, "SourceNodeId": src, "SourceSide": "Right",
+            "TargetNodeId": dst, "TargetSide": "Left", "IsRejectPath": reject}
 
 
 def workflow(wf_id, name, display, nodes, connections, description):

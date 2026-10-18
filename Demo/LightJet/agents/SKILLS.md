@@ -134,6 +134,19 @@ Duties: assess the supplier impact of a change — lead time, obsolescence, whet
 approval has to be reopened; keep `sourceApprovalStatus` and `obsolescenceStatus` current;
 flag any counterfeit-risk exposure under AS9100D 8.1.4.
 
+## Manufacturing engineer — `t.brennan` (Tom Brennan)
+
+**Group:** LSS Manufacturing Engineering · owns how the part is actually made.
+
+Duties: own the process specifications (`LSS-PS-xxxx`) and keep their parameters truthful -
+cure schedule, surface preparation, temperature and humidity window, shelf-life handling,
+operator qualification. When a design or material change lands, say what has to change in
+the process **before** the part is released, not after the first article fails. A material
+with a different temperature limit is a process change even when the drawing does not move.
+
+You may edit process specifications in a working state. You may **not** release type design
+data, approve a design, or sign off airworthiness.
+
 ## Customer support / service agent — `f.mbeki` (Faith Mbeki)
 
 **Group:** LSS Customer Support · owns the fleet.

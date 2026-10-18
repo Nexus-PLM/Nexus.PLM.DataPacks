@@ -753,7 +753,8 @@ def deterministic_id(part_number: str) -> str:
 
 def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
          vault_url: str | None = None,
-         documents_dir: Path | None = None) -> None:
+         documents_dir: Path | None = None,
+         only_new: bool = False) -> None:
     """Create everything, in an order where nothing precedes what it points at."""
     def say(message):
         if verbose:
@@ -833,10 +834,26 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
     ids: dict[str, str] = {}
     revision_ids: dict[tuple[str, str], str] = {}
 
+    # Which objects are already on the site. In `only_new` mode the loader adds what is
+    # missing and leaves everything else exactly as it is - including whatever people
+    # have changed since. A plain run rewrites every attribute from this dataset, which
+    # is right for a reset and wrong while anyone is working: it silently reverts their
+    # edits, and the only trace is an "AttributesUpdated" line in somebody else's name.
+    untouched: set[str] = set()
+    if only_new:
+        for record in records:
+            if engine.get(f"/api/plmobjects/{deterministic_id(record['pn'])}"):
+                untouched.add(record["pn"])
+        say(f"already present and left alone: {len(untouched)}")
+
     for record in records:
         pn = record["pn"]
         object_id = deterministic_id(pn)
         ids[pn] = object_id
+        for label, _status in (record.get("history") or [("A", None)]):
+            revision_ids[(pn, label)] = deterministic_id(f"{pn}#{label}")
+        if pn in untouched:
+            continue
         engine.put(f"/api/plmobjects/{object_id}", {
             "plmObjectId": object_id,
             "typeName": record["type"],
@@ -910,6 +927,8 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
     later = 0
     for record in records:
         pn = record["pn"]
+        if pn in untouched:
+            continue
         for label, status in (record.get("history") or [])[1:]:
             revision_id = deterministic_id(f"{pn}#{label}")
             revision_ids[(pn, label)] = revision_id
@@ -926,6 +945,8 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
     # rather than PUT so the Engine applies them through the path that validates them.
     for record in records:
         pn = record["pn"]
+        if pn in untouched:
+            continue
         history = record.get("history") or [(record.get("revision", "A"), None)]
         latest = history[-1][0]
         attrs = {k: v for k, v in (record.get("attrs") or {}).items() if v is not None}
@@ -1047,6 +1068,8 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
     say(f"object references: {made} created, {already} already present")
 
     for pn, refs in EV.EVIDENCE_REF_UPDATES.items():
+        if pn in untouched:
+            continue
         latest = (by_pn_all[pn].get("history") or [("A", None)])[-1][0]
         engine.patch(f"/api/plmobjects/{ids[pn]}/revisions/"
                      f"{revision_ids[(pn, latest)]}/attributes",
@@ -1178,12 +1201,14 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
             for status, comment in change.get("transitions", [])[start:]:
                 engine.post(f"/api/{route}/{change_id}/transition",
                             {"toStatus": status, "comment": comment})
+        # A chain link already made answers 409 - "this ECR is already promoted into an
+        # ECO" - which on a reload is the normal case, not a failure.
         if ecr and eco:
             engine.post(f"/api/ecos/{ids[eco['pn']]}/ecrs",
-                        {"ecrId": ids[ecr['pn']]})
+                        {"ecrId": ids[ecr['pn']]}, allow_409=True)
         if eco and ecn:
             engine.post(f"/api/ecns/{ids[ecn['pn']]}/ecos",
-                        {"ecoId": ids[eco['pn']]})
+                        {"ecoId": ids[eco['pn']]}, allow_409=True)
     say(f"change chains: {len(QA.CHANGE_CHAINS)}")
 
     # ── Document files ──────────────────────────────────────────────────────
@@ -1262,6 +1287,11 @@ def main() -> int:
     parser.add_argument("--documents", default=None,
                         help="Folder of generated document files. Defaults to "
                              "../build/documents.")
+    parser.add_argument("--only-new", action="store_true",
+                        help="Add what is missing and leave every existing object "
+                             "exactly as it is. Use this when people - or agents - are "
+                             "working in the site; a plain run rewrites every attribute "
+                             "from this dataset and reverts their edits.")
     parser.add_argument("--verify-tls", action="store_true",
                         help="Verify the server certificate (off by default, since the "
                              "demo site uses a per-installation CA).")
@@ -1323,7 +1353,8 @@ def main() -> int:
     if args.vault and not documents_dir.is_dir():
         print(f"  ! --vault given but no documents at {documents_dir}. Run "
               f"docgen/generate_documents.py first, or the objects load without files.")
-    load(engine, registry, vault_url=args.vault, documents_dir=documents_dir)
+    load(engine, registry, vault_url=args.vault, documents_dir=documents_dir,
+         only_new=args.only_new)
     return 0
 
 

@@ -15,6 +15,7 @@ approved data, or a real test result.
 
 from __future__ import annotations
 
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -22,6 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "seed"))
 
 import lightjet_documents as DOC                                     # noqa: E402
+import lightjet_evidence as EV                                       # noqa: E402
 import lightjet_quality as QA                                        # noqa: E402
 
 from reportlab.lib import colors                                      # noqa: E402
@@ -1004,8 +1006,12 @@ def main() -> int:
     written = 0
     skipped = []
 
+    # EV.EVIDENCE belongs here for the same reason it exists at all: a compliance item
+    # that cites a test report whose FILE is missing is the same claim-without-evidence
+    # the reports were created to remove. The object and the document ship together.
     records = (DOC.ALL_DOCUMENTS + QA.FAI_REPORTS + QA.NCRS + QA.COCS + QA.ARCS
-               + QA.SUPPLIER_RECORDS + QA.PROCESS_SPECS + QA.SERVICE_BULLETINS)
+               + QA.SUPPLIER_RECORDS + QA.PROCESS_SPECS + QA.SERVICE_BULLETINS
+               + EV.EVIDENCE)
 
     for record in records:
         name = record.get("file")
@@ -1031,7 +1037,7 @@ def main() -> int:
             elif name.endswith(".xlsx"):
                 build_checklist_xlsx(path, record)
             else:
-                kind = stem.replace("n5LightSpeedSystems", "")
+                kind = re.sub(r"^[a-z0-9]*LightSpeedSystems", "", stem)
                 build_generic_docx(path, record, kind, sections_for(record))
             written += 1
         except Exception as error:                 # noqa: BLE001
