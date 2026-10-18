@@ -36,12 +36,47 @@ PROJECTS = [
             "compliance items, the safety assessments and the qualification evidence.",
         "type": "Internal",
         "status": "Active",
+        # Project membership is a HARD filter, not a tie-breaker: when an object is
+        # filed in a project, a non-member is refused view and read "whatever the policy
+        # row says" - the security inspector's own words. So a group left off this list
+        # is 403 on every compliance item however generous its policy row is, and that
+        # is not a defect in the product or in the security model. Two roles reported it
+        # as one (NI-00000763, NI-00000764) and several more findings resolved to it.
         "memberGroups": ["LSS Airworthiness and Certification", "LSS Systems Engineering",
                          "LSS Design Engineering", "LSS Stress and Loads",
                          # Without these two the programme and project managers were 403
                          # on every compliance item and every change they are
                          # accountable for - found by the project manager agent.
-                         "LSS Programme Management", "LSS Project Management"],
+                         "LSS Programme Management", "LSS Project Management",
+                         # Continued airworthiness is DOWNSTREAM of certification, not
+                         # beside it: the limitations, the ICA and the airworthiness
+                         # limitations section are all derived from the compliance
+                         # demonstrations held here. Customer Support was 403 on every
+                         # one of them, so the role that answers an operator's question
+                         # could not read the basis of the answer (NI-00000763).
+                         "LSS Customer Support",
+                         # Conformity is a means of compliance in its own right: the
+                         # first article and the certificate of conformity ARE
+                         # certification evidence, and quality owns them.
+                         "LSS Quality Assurance",
+                         # A process specification is an accepted means of compliance
+                         # under CS-23, and a special process is qualified here.
+                         "LSS Manufacturing Engineering",
+                         # Supplier qualification records are compliance evidence for
+                         # every bought-in part in the certification basis.
+                         "LSS Supply Chain",
+                         # The board dispositions changes AGAINST certification impact,
+                         # which it cannot assess without reading the compliance items
+                         # the change would invalidate (NI-00000491, NI-00000495).
+                         "LSS Change Control Board",
+                         # A nonconformance against type design data needs airworthiness
+                         # concurrence, so the board has to see what it is deviating from.
+                         "LSS Material Review Board",
+                         # A DER finds compliance on the Administrator's behalf. Until
+                         # now the DER reached this project only by also sitting in the
+                         # airworthiness group, which is exactly the conflation the
+                         # separate group exists to avoid (NI-00000760).
+                         "FAA Designated Engineering Representatives"],
         "privilegedGroups": ["LSS Airworthiness and Certification"],
     },
     {
@@ -66,7 +101,11 @@ PROJECTS = [
                          "LSS Airworthiness and Certification",
                          # Quality's own first article records are written against these
                          # parts; it was 403 on every one of them.
-                         "LSS Quality Assurance", "LSS Material Review Board"],
+                         "LSS Quality Assurance", "LSS Material Review Board",
+                         # The board dispositions every change to this system, and the
+                         # DER approves the data within her delegation.
+                         "LSS Change Control Board",
+                         "FAA Designated Engineering Representatives"],
         "privilegedGroups": ["LSS Design Engineering"],
     },
     {
@@ -79,10 +118,28 @@ PROJECTS = [
             "commercially sensitive to the operator.",
         "type": "External",
         "status": "Active",
+        # Narrow, but narrow on the COMMERCIAL terms rather than on the configuration:
+        # an interior that is certified has to be engineered, substantiated and built
+        # like any other part of the aeroplane, and the groups that do that work cannot
+        # be outside the project that holds it.
         "memberGroups": ["LSS Design Engineering", "LSS Customer Support",
                          "LSS Quality Assurance",
                          "LSS Programme Management", "LSS Project Management",
-                         "LSS Airworthiness and Certification"],
+                         "LSS Airworthiness and Certification",
+                         # The operator requirements live here and the system
+                         # requirements are allocated FROM them, so the group that owns
+                         # the allocation could not read its own parents - and the
+                         # requirements tree omitted the nodes without saying so
+                         # (NI-00000764).
+                         "LSS Systems Engineering",
+                         # A cabin monument needs 9g substantiation under CS 23.561.
+                         "LSS Stress and Loads",
+                         # Somebody has to build it.
+                         "LSS Manufacturing Engineering",
+                         # A cabin change is still a change, and still dispositioned.
+                         "LSS Change Control Board",
+                         # An interior is certified by the same delegated authority.
+                         "FAA Designated Engineering Representatives"],
         "privilegedGroups": ["LSS Customer Support"],
     },
 ]

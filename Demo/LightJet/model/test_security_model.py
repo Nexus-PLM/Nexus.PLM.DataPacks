@@ -1,0 +1,324 @@
+"""Invariants the NX-200 security model must hold, as tests.
+
+Nine role agents spent a working day finding these by hand, one 403 at a time, and most of
+what they found was not a product defect - it was this model granting the wrong thing. The
+expensive part was never the fix; it was discovering the gap at all. So each invariant here
+is one a live agent had to discover, and the comment says which.
+
+These run without a server and without pytest:
+
+    cd Demo/LightJet && LIGHTJET_PREFIX=cst python model/test_security_model.py
+
+pytest collects them too, if it is installed.
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+# The project-membership invariant reads the seed's project table, because that is where
+# the fact lives - and project membership is checked BEFORE any policy row, so a model
+# that looks right can still refuse everybody.
+sys.path.insert(0, str(Path(__file__).parent.parent / "seed"))
+
+import aviation_model as A                                            # noqa: E402
+import build_customization as B                                      # noqa: E402
+
+# Every lifecycle the model declares, with a concrete type that uses it, so an invariant is
+# checked against each shape rather than against one convenient example.
+LIFECYCLES = [
+    ("type design", "Drawing",          [s for s, _ in A.TYPE_DESIGN_STATES]),
+    ("support",     "Tooling",          [s for s, _ in A.SUPPORT_STATES]),
+    ("compliance",  "ComplianceReport", [s for s, _ in A.COMPLIANCE_STATES]),
+    ("quality",     "Ncr",              [s for s, _ in A.QUALITY_STATES]),
+    ("certificate", "CofC",             [s for s, _ in A.CERTIFICATE_STATES]),
+    ("publication", "ServiceBulletin",  [s for s, _ in A.PUBLICATION_STATES]),
+]
+
+GROUP_NAMES = {name for name, _description in A.GROUPS}
+
+
+def models():
+    """Every (label, stem, states, built model) the model declares."""
+    for label, stem, states in LIFECYCLES:
+        yield label, stem, states, B.security_model(stem, states)
+
+
+def rows_for(model, state):
+    return [r for r in model["statePermissions"] if r["stateName"] == state]
+
+
+def subject(row):
+    if row["subjectType"] == "*":
+        return "*"
+    return f"{row['subjectType']}:{row['subjectName']}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Who the rows name
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_every_subject_is_a_group_the_package_ships():
+    """A policy row naming a group that does not exist matches nobody, silently.
+
+    This is the shape of the defect that cost this exercise the most: `accountType` was
+    "User", which is not one of the four the Engine matches, so thirteen accounts fell
+    through every row to the wildcard and nine agents reported that they could not do
+    their jobs. A misspelt GROUP name fails exactly the same way and just as quietly.
+    """
+    for label, stem, _states, model in models():
+        for row in model["statePermissions"]:
+            if row["subjectType"] == "group":
+                assert row["subjectName"] in GROUP_NAMES, \
+                    f"{label}/{stem}: policy row names group {row['subjectName']!r}, " \
+                    f"which the package does not ship"
+            elif row["subjectType"] == "role":
+                assert row["subjectName"] in {"Admin", "System Administrator",
+                                              "Member", "Guest"}, \
+                    f"{label}/{stem}: role subject {row['subjectName']!r} is not one of " \
+                    "the four account types the Engine matches"
+
+
+def test_every_transition_rule_names_real_subjects():
+    """An allowedRoles list with a bad name is an allowlist that allows nobody."""
+    for label, stem, _states, model in models():
+        for rule in model["transitionRules"]:
+            assert rule["allowedRoles"].strip(), \
+                f"{label}/{stem}: {rule['fromState']} -> {rule['toState']} allows nobody"
+            for who in rule["allowedRoles"].split(","):
+                who = who.strip()
+                kind, _, name = who.partition(":")
+                if kind == "group":
+                    assert name in GROUP_NAMES, \
+                        f"{label}/{stem}: rule {rule['fromState']} -> " \
+                        f"{rule['toState']} names unknown group {name!r}"
+                else:
+                    assert kind == "role" and name == "Admin", f"unexpected subject {who!r}"
+
+
+def test_every_group_can_reach_at_least_one_project():
+    """A group in no project is 403 on every object filed in one, whatever its rows say.
+
+    Project membership is a hard filter applied before the policy row - the security
+    inspector says so in as many words: "refused whatever the policy row says". Customer
+    Support and Systems Engineering each reported a flat 403 on data their role exists to
+    read, and in both cases every policy row already granted it (NI-00000763,
+    NI-00000764). Nothing in the security model can show that, which is why it belongs
+    here.
+    """
+    import lightjet_projects  # noqa: PLC0415 - seed package, not needed by the model
+    covered = {g for p in lightjet_projects.PROJECTS for g in p["memberGroups"]}
+    missing = sorted(GROUP_NAMES - covered)
+    assert not missing, \
+        f"these groups are in no project, so they are 403 on anything filed: {missing}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# What the rows grant
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_no_row_anywhere_grants_create():
+    """The first `canCreate: true` on a site turns creation into an allowlist for EVERY
+    type at once, so one well-meant grant takes create away from every role that has no
+    row. The model has always said this; nothing enforced it."""
+    for label, stem, _states, model in models():
+        for row in model["statePermissions"]:
+            assert row["canCreate"] is False, \
+                f"{label}/{stem}: {subject(row)} grants create in {row['stateName']}"
+
+
+def test_a_locked_state_grants_edit_to_nobody_but_admin_and_a_finding():
+    """A released or accepted revision being editable is the defect that makes a release
+    mean nothing - reported from both directions, by the designer who could rewrite
+    approved content in place (NI-00000484) and by the DER who found she could alter the
+    evidence she was judging (NI-00000492)."""
+    for label, stem, _states, model in models():
+        for row in model["statePermissions"]:
+            if row["stateName"] not in B.RELEASE_LOCKED:
+                continue
+            if subject(row) == "role:Admin" or row["stateName"] == B.FINDING_STATE:
+                continue
+            assert row["editScope"] == "None", \
+                f"{label}/{stem}: {subject(row)} may edit in locked state " \
+                f"{row['stateName']}"
+
+
+def test_a_record_kept_for_life_is_deletable_only_by_an_administrator():
+    """Customer Support held delete-Any on a mandatory service bulletin with life-of-type
+    retention: the role that issues a bulletin could erase it (NI-00000510, NI-00000675).
+    Retention is a records requirement, so the withdrawal states are the route, not a
+    delete."""
+    for stem in sorted(B.RETAINED_FOR_LIFE):
+        states = B.states_of(stem)
+        if states is None:
+            continue
+        model = B.security_model(stem, states)
+        for row in model["statePermissions"]:
+            if subject(row) == "role:Admin":
+                continue
+            assert row["deleteScope"] == "None", \
+                f"{stem}: {subject(row)} may delete in {row['stateName']}, but this type " \
+                "is retained for the life of the type"
+
+
+def test_the_delegated_authority_can_read_its_scope_and_write_only_a_finding():
+    """The DER group had no row of any kind, so its only rights came from the site's DER
+    also sitting in the airworthiness group - exactly the conflation a separate group
+    exists to prevent. She had 403 on edit, 404 on every transition and 409 on the action:
+    no writable surface at all on the evidence she is there to judge (NI-00000760)."""
+    for stem in sorted(B.AUTHORITY_SCOPE):
+        states = B.states_of(stem)
+        if states is None:
+            continue
+        model = B.security_model(stem, states)
+        for state in states:
+            rows = [r for r in rows_for(model, state)
+                    if r["subjectName"] == B.AUTHORITY_GROUP]
+            assert len(rows) == 1, f"{stem}/{state}: the authority has {len(rows)} rows"
+            row = rows[0]
+            assert row["canRead"] and row["canDownload"], \
+                f"{stem}/{state}: the authority cannot read the evidence it judges"
+            expected = "Any" if state == B.FINDING_STATE else "None"
+            assert row["editScope"] == expected, \
+                f"{stem}/{state}: the authority's edit is {row['editScope']}, " \
+                f"expected {expected}"
+
+
+def test_a_contributing_group_may_work_but_may_not_approve():
+    """A contributing group exists because the named assignee of a compliance item could
+    not write a word on it (NI-00000765). It does the work; it does not decide when the
+    work is done, and it never deletes."""
+    for stem, groups in B.CONTRIBUTING_GROUPS.items():
+        states = B.states_of(stem)
+        if states is None:
+            continue
+        model = B.security_model(stem, states)
+        for group in groups:
+            if group == B.OWNING_GROUP.get(stem):
+                continue
+            for state in states:
+                rows = [r for r in rows_for(model, state) if r["subjectName"] == group]
+                assert rows, f"{stem}/{state}: no row for contributing group {group}"
+                row = rows[0]
+                assert row["canTransition"] is False, \
+                    f"{stem}/{state}: contributing group {group} may transition"
+                assert row["deleteScope"] == "None", \
+                    f"{stem}/{state}: contributing group {group} may delete"
+                if state not in B.RELEASE_LOCKED:
+                    assert row["editScope"] == "Any", \
+                        f"{stem}/{state}: contributing group {group} cannot do its work"
+
+
+def test_canTransition_is_not_advertised_where_the_rules_refuse_it():
+    """GET /permissions reported transition rights the transitionRules allowlist then
+    refused, which is how a systems engineer came to report that he could transition a
+    test report inside the airworthiness gate (NI-00000506). Nothing was actually released
+    without a signatory - but a flag that says yes where the rules say no is a worse answer
+    than a plain no."""
+    for label, stem, states, model in models():
+        routes = {}
+        for rule in model["transitionRules"]:
+            routes.setdefault(rule["fromState"], set()).update(
+                w.strip() for w in rule["allowedRoles"].split(","))
+        for row in model["statePermissions"]:
+            if not row["canTransition"] or subject(row) == "*":
+                continue
+            allowed = routes.get(row["stateName"], set())
+            assert subject(row) in allowed, \
+                f"{label}/{stem}: {subject(row)} is told it may transition from " \
+                f"{row['stateName']}, but no rule out of {row['stateName']} allows it"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Where a revision may go
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_every_type_declares_at_least_one_transition_rule():
+    """`transitionRules` is an allowlist and an empty one is not a safe default: the Engine
+    enforces transitions only when a type declares a rule, so a type with none has no
+    transition control whatever its canTransition flags say. That is how type design data
+    could be set straight to Released (NI-00000509), and it is the same shape as the
+    change gates shipping with every approver list empty (NI-00000497)."""
+    for label, stem, _states, model in models():
+        assert model["transitionRules"], f"{label}/{stem}: no transition rules at all"
+
+
+def test_an_approval_is_entered_only_from_the_state_before_it_and_only_by_a_signatory():
+    """"Approval from any working state" made the review stages decoration: the built graph
+    carried "In Work -> Released", so type design data could be signed without passing
+    design review, stress review or the airworthiness gate (NI-00000494, NI-00000509), and
+    "Planned -> Accepted", so a compliance demonstration could be accepted with no agreed
+    method and no evidence."""
+    for label, stem, states, model in models():
+        for rule in model["transitionRules"]:
+            if rule["toState"] not in B.SIGNATORY_STATES:
+                continue
+            assert f"group:{B.SIGNATORY_GROUP}" in rule["allowedRoles"], \
+                f"{label}/{stem}: {rule['toState']} entered without a signatory"
+            assert B.OWNING_GROUP.get(stem, "\0") not in rule["allowedRoles"], \
+                f"{label}/{stem}: the owning group may enter {rule['toState']} itself"
+            gate = states[states.index(rule["toState"]) - 1]
+            assert rule["fromState"] == gate, \
+                f"{label}/{stem}: {rule['toState']} may be entered from " \
+                f"{rule['fromState']}, skipping {gate}"
+
+
+def test_a_settled_state_is_never_walked_back_into_the_workflow():
+    """RELEASE_LOCKED and the transition sets were two answers to one question, and where
+    they disagreed a state that forbade editing still had working-state routes out of it.
+    The built graph carried "Cancelled -> Issued", which puts a cancelled service bulletin
+    back into service."""
+    for label, stem, states, model in models():
+        for rule in model["transitionRules"]:
+            if rule["fromState"] not in B.SETTLED_STATES:
+                continue
+            target = rule["toState"]
+            ok = (target in B.SETTLED_STATES or target == B.FINDING_STATE)
+            assert ok, \
+                f"{label}/{stem}: {rule['fromState']} -> {target} walks a settled " \
+                "record back into the workflow"
+
+
+def test_retirement_only_moves_forward():
+    """"Obsolete -> Superseded" would bring a part withdrawn from service back as merely
+    replaced."""
+    for label, stem, states, model in models():
+        for rule in model["transitionRules"]:
+            if rule["fromState"] in B.POST_APPROVAL_STATES \
+                    and rule["toState"] in B.POST_APPROVAL_STATES:
+                assert states.index(rule["toState"]) > states.index(rule["fromState"]), \
+                    f"{label}/{stem}: {rule['fromState']} -> {rule['toState']} " \
+                    "un-retires a revision"
+
+
+def test_every_state_is_reachable_and_every_live_state_has_a_way_out():
+    """A state nothing reaches is a lane of the board that can never be filled; a live
+    state nothing leaves is a dead end that needs an administrator. ECR's 'Approved' was
+    found to be exactly that (NI-00000519)."""
+    for label, stem, states, model in models():
+        reached = {r["toState"] for r in model["transitionRules"]} | {states[0]}
+        assert set(states) <= reached, \
+            f"{label}/{stem}: unreachable states {sorted(set(states) - reached)}"
+        leaves = {r["fromState"] for r in model["transitionRules"]}
+        stuck = sorted(s for s in states if s not in leaves and s not in B.SETTLED_STATES)
+        assert not stuck, f"{label}/{stem}: live states with no way out: {stuck}"
+
+
+def main() -> int:
+    tests = [(name, obj) for name, obj in sorted(globals().items())
+             if name.startswith("test_") and callable(obj)]
+    failed = []
+    for name, test in tests:
+        try:
+            test()
+            print(f"  PASS  {name}")
+        except AssertionError as exc:
+            failed.append((name, str(exc)))
+            print(f"  FAIL  {name}\n          {exc}")
+    print(f"\n{len(tests) - len(failed)}/{len(tests)} passed")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

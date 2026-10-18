@@ -184,6 +184,76 @@ OWNING_GROUP = {
 # only by the groups that need it. Everyone else does not see the object at all.
 EXPORT_RESTRICTED = {"SwPlan", "AehItem", "SoftwareItem"}
 
+# One owning group per type was too blunt. A type has ONE group accountable for it, but
+# the work on it is not done by that group alone, and a role that cannot write anything on
+# an object it is assigned to is not a security model - it is a dead end that the person
+# works around in a discussion thread. Contributing groups get the same Any-scope edit in
+# working states and no transition right: they do the work, the owning group and the
+# signatory decide when it is done.
+#
+# Each line is a duty somebody on the programme actually holds:
+CONTRIBUTING_GROUPS = {
+    # A compliance demonstration is substantiated by stress as often as by systems, and
+    # the stress engineer who is the named assignee of one could not write on it at all
+    # (NI-00000765). Quality's conformity evidence is a means of compliance in its own
+    # right, so it contributes too.
+    "ComplianceReport": ["LSS Stress and Loads", "LSS Quality Assurance"],
+    "QualTestPlan":     ["LSS Stress and Loads"],
+    "QualTestReport":   ["LSS Stress and Loads"],
+    "SafetyAssessment": ["LSS Stress and Loads"],
+    # Static, fatigue and damage tolerance substantiation IS the stress group's output,
+    # and it is written into the specification that carries the loads.
+    "Specification":    ["LSS Stress and Loads"],
+    # A nonconformance is raised by quality and dispositioned by the review board; the
+    # board could read every one and write none of them.
+    "Ncr":              ["LSS Material Review Board"],
+    # A first article is an inspection record against a manufacturing process, and the
+    # process owner has to be able to answer a finding on it.
+    "FaiReport":        ["LSS Manufacturing Engineering"],
+    # A supplier's qualification rests on quality's audit of them.
+    "SupplierQualRecord": ["LSS Quality Assurance"],
+    # A service bulletin's embodiment instructions are written by the people who build
+    # the thing, and its effectivity is checked against the as-built configuration.
+    "ServiceBulletin":  ["LSS Manufacturing Engineering"],
+    # A special process specification is qualified by the lab and audited by quality.
+    "ProcessSpec":      ["LSS Quality Assurance"],
+    # An operator requirement is allocated DOWN into system requirements, which is
+    # systems engineering's work even though the customer-facing role owns the record.
+    "OperatorRequirement": ["LSS Systems Engineering"],
+}
+
+# The delegated authority. A DER finds compliance on the Administrator's behalf, which is
+# neither the applicant's authorship nor the applicant's airworthiness signature - the
+# reason the group exists separately. The model gave it no row of ANY kind, so the only
+# rights the site's DER had came from her also sitting in the airworthiness group, and in
+# an accepted state that group holds edit None: she had no writable surface at all on the
+# evidence she is there to judge, and no way to record a finding (NI-00000760).
+#
+# What a finding IS, in policy terms: an accepted demonstration whose acceptance is now in
+# question. So the authority does not edit an Accepted item - it moves it to Finding Open,
+# which is a working state again, and records the finding there. That keeps the acceptance
+# record itself immutable, which is the point of locking it.
+AUTHORITY_GROUP = "FAA Designated Engineering Representatives"
+
+# The types a DER's delegation covers: the compliance demonstration and the evidence
+# underneath it. Not the design itself - a DER approves DATA, not parts.
+AUTHORITY_SCOPE = {"ComplianceReport", "QualTestPlan", "QualTestReport", "SafetyAssessment",
+                   "SwPlan", "EMICAR", "PrjSpecificCertPlan", "CertRequirement",
+                   "AirworthinessRelease"}
+
+# The state a finding re-opens an accepted demonstration into.
+FINDING_STATE = "Finding Open"
+
+# Records the site must keep for the life of the type, where a delete is never routine.
+# Customer Support held delete Any on a mandatory service bulletin with life-of-type
+# retention: the role that issues a bulletin could erase it, and two agents reported it
+# independently (NI-00000510, NI-00000675). Retention is a records requirement, not a
+# permission preference, so nobody but an administrator deletes these at any status - the
+# withdrawal states exist precisely so that a bulletin can be retired without vanishing.
+RETAINED_FOR_LIFE = {"ServiceBulletin", "AirworthinessRelease", "CofC", "FaiReport",
+                     "Ncr", "ComplianceReport", "SafetyAssessment", "QualTestReport",
+                     "SupplierQualRecord", "Aircraft"}
+
 
 def security_model(stem: str, state_names: list[str]) -> dict:
     """The security model for one concrete type.
@@ -196,15 +266,33 @@ def security_model(stem: str, state_names: list[str]) -> dict:
     """
     owner_group = OWNING_GROUP.get(stem)
     restricted = stem in EXPORT_RESTRICTED
+    retained = stem in RETAINED_FOR_LIFE
     rows: list[dict] = []
+
+    # The rules come first, because `canTransition` has to agree with them. Where the two
+    # disagreed, GET /permissions advertised a power the site would then refuse, and a
+    # reporter reasonably read the flag as the answer (NI-00000506). A subject is told it
+    # may transition out of a state only when some rule actually lets it.
+    rules = transition_rules(state_names, owner_group)
+    movers: dict[str, set[str]] = {}
+    for rule in rules:
+        movers.setdefault(rule["fromState"], set()).update(
+            who.strip() for who in rule["allowedRoles"].split(","))
+
+    def may_move(state: str, who: str) -> bool:
+        return who in movers.get(state, set())
 
     for state in state_names:
         locked = state in RELEASE_LOCKED
+        # A record kept for the life of the type is never deleted by the role that
+        # authored it; it is withdrawn, which the lifecycle already provides for.
+        own_delete = "None" if (locked or retained) else "Own"
+        any_delete = "None" if (locked or retained) else "Any"
         rows.append({
             "stateName": state, "subjectType": "*", "subjectName": "",
             "canView": not restricted, "canRead": not restricted, "canCreate": False,
             "editScope": "None" if locked else "Own",
-            "deleteScope": "None" if locked else "Own",
+            "deleteScope": own_delete,
             "canTransition": False, "canDownload": not restricted,
         })
         if owner_group:
@@ -212,8 +300,40 @@ def security_model(stem: str, state_names: list[str]) -> dict:
                 "stateName": state, "subjectType": "group", "subjectName": owner_group,
                 "canView": True, "canRead": True, "canCreate": False,
                 "editScope": "None" if locked else "Any",
-                "deleteScope": "None" if locked else "Any",
-                "canTransition": True, "canDownload": True,
+                "deleteScope": any_delete,
+                # The owning group used to carry canTransition in EVERY state, approval
+                # states included. The transitionRules allowlist refused the move anyway,
+                # so nothing was actually released without a signatory - but GET
+                # /permissions reported a power the site would not honour, which is how a
+                # systems engineer came to report that he could transition a test report
+                # inside the airworthiness gate (NI-00000506). A flag that says yes where
+                # the rules say no is a worse answer than a plain no.
+                "canTransition": may_move(state, f"group:{owner_group}"),
+                "canDownload": True,
+            })
+        # Contributing groups: the same working-state edit as the owner, no transition.
+        for group in CONTRIBUTING_GROUPS.get(stem, []):
+            if group == owner_group:
+                continue
+            rows.append({
+                "stateName": state, "subjectType": "group", "subjectName": group,
+                "canView": True, "canRead": True, "canCreate": False,
+                "editScope": "None" if locked else "Any",
+                "deleteScope": "None",
+                "canTransition": False, "canDownload": True,
+            })
+        # The delegated authority: reads everything in its scope at every status, and
+        # writes only in the state a finding re-opens the item into. It does not edit an
+        # accepted demonstration - it withdraws the acceptance first, which is what a
+        # finding is.
+        if stem in AUTHORITY_SCOPE:
+            rows.append({
+                "stateName": state, "subjectType": "group", "subjectName": AUTHORITY_GROUP,
+                "canView": True, "canRead": True, "canCreate": False,
+                "editScope": "Any" if state == FINDING_STATE else "None",
+                "deleteScope": "None",
+                "canTransition": may_move(state, f"group:{AUTHORITY_GROUP}"),
+                "canDownload": True,
             })
         # Airworthiness always sees type design data, whatever the state, because it has to
         # be able to answer a question about a released configuration without being granted
@@ -222,21 +342,26 @@ def security_model(stem: str, state_names: list[str]) -> dict:
             "stateName": state, "subjectType": "group",
             "subjectName": "LSS Airworthiness and Certification",
             "canView": True, "canRead": True, "canCreate": False,
-            "editScope": "None", "deleteScope": "None",
-            "canTransition": True, "canDownload": True,
+            # Same exception as the authority above, and for the same reason: an
+            # airworthiness finding against its own acceptance has to land somewhere.
+            "editScope": "Any" if state == FINDING_STATE else "None",
+            "deleteScope": "None",
+            "canTransition": may_move(state, f"group:{SIGNATORY_GROUP}"),
+            "canDownload": True,
         })
         rows.append({
             "stateName": state, "subjectType": "role", "subjectName": "Admin",
             "canView": True, "canRead": True, "canCreate": False,
             "editScope": "Any", "deleteScope": "Any",
-            "canTransition": True, "canDownload": True,
+            "canTransition": may_move(state, "role:Admin"),
+            "canDownload": True,
         })
 
     return {
         "publicVisibilityState": None,
         "defaultRevisionState": state_names[0],
         "statePermissions": rows,
-        "transitionRules": transition_rules(state_names, owner_group),
+        "transitionRules": rules,
         "attributeEditability": [],
     }
 
@@ -251,6 +376,25 @@ POST_APPROVAL_STATES = {"Superseded", "Obsolete", "Withdrawn"}
 
 # Refusing or abandoning your own work needs no delegated authority.
 NEGATIVE_STATES = {"Rejected", "Cancelled", "Void"}
+
+# Once a record is settled it is not walked back into the workflow. This set and
+# RELEASE_LOCKED were two different answers to the same question, and where they disagreed
+# the transition builder treated a state as WORKING that the permission rows treated as
+# locked - so the owning group got forward-and-back routes out of it. The results were
+# visible in the built graph and none of them is defensible in front of an authority:
+# "Cancelled -> Issued" put a cancelled service bulletin back into service, "Void ->
+# Closed" closed a voided nonconformance, and "Closed -> Dispositioned" let quality
+# re-decide a disposition it had already closed out. A state that forbids editing forbids
+# re-entering too; the way back is a new revision or a new record.
+# `Dispositioned` is deliberately NOT here. It locks editing - the disposition is the
+# decision and must not be rewritten - but it is not the end of the record: the
+# nonconformance still has to be verified and closed out, and making it settled left a
+# quality record that could be dispositioned and then never closed.
+#
+# `Restricted` is not here either, and is not in RELEASE_LOCKED: a tool or consumable that
+# is restricted is still in service under a limitation, so it is edited and it is later
+# withdrawn.
+SETTLED_STATES = (SIGNATORY_STATES | POST_APPROVAL_STATES | NEGATIVE_STATES | {"Closed"})
 
 SIGNATORY_GROUP = "LSS Airworthiness and Certification"
 
@@ -295,19 +439,47 @@ def transition_rules(state_names: list[str], owner_group: str | None) -> list[di
     present_approved = SIGNATORY_STATES & set(state_names)
     present_retired = POST_APPROVAL_STATES & set(state_names)
     present_negative = NEGATIVE_STATES & set(state_names)
+    present_settled = SETTLED_STATES & set(state_names)
 
     for index, state in enumerate(state_names):
+        if state in present_settled and state not in present_approved \
+                and state not in present_retired:
+            # A settled state that is neither an approval nor a retirement: Closed, Void,
+            # Cancelled, Dispositioned. It is the end of the record. The only move out is
+            # an authority re-opening it, which is the same act as a finding against an
+            # acceptance and carries the same two subjects.
+            if FINDING_STATE in state_names:
+                allow(state, FINDING_STATE, f"{signatory}, group:{AUTHORITY_GROUP}")
+            # No retirement route from here. Superseding or obsoleting a record is what
+            # you do to something that WAS in force; a cancelled or voided one never was,
+            # and the built graph carried "Cancelled -> Superseded" to prove the point.
+            continue
+
         if state in present_approved:
             # The only way out of an approved revision is to retire it. Everything else
             # is a new revision or a new part number, which is a create, not a move.
             for retired in present_retired:
                 allow(state, retired, signatory)
+            # ...with one exception, and it is an authority act rather than a loophole.
+            # A finding against an accepted compliance demonstration says the acceptance
+            # itself is in question, and there was NO route for it: the DER had 403 on
+            # edit, 404 on every transition and 409 on the action, so the one power her
+            # delegation exists to exercise had nowhere to land (NI-00000760). A finding
+            # re-opens the item into a working state, where the record of the finding is
+            # then written - which leaves the acceptance record itself untouched, exactly
+            # as a locked state should.
+            if FINDING_STATE in state_names:
+                allow(state, FINDING_STATE, f"{signatory}, group:{AUTHORITY_GROUP}")
             continue
 
         if state in present_retired:
-            # A retired revision stays retired. Superseded may still go on to Obsolete.
+            # A retired revision stays retired, and retirement only ever goes FORWARD in
+            # the declared order: Superseded may still become Obsolete, but the built
+            # graph also carried "Obsolete -> Superseded", which would bring a part that
+            # had been withdrawn from service back as merely replaced.
             for retired in present_retired:
-                allow(state, retired, signatory)
+                if state_names.index(retired) > index:
+                    allow(state, retired, signatory)
             continue
 
         # A working state: forward a step, and back a step for rework.
@@ -317,9 +489,34 @@ def transition_rules(state_names: list[str], owner_group: str | None) -> list[di
                 continue                      # handled below, signatory only
             allow(state, neighbour, working)
 
-        # Approval may be granted from any working state, by a signatory only.
+        # Approval may be granted by a signatory only - and only from the state that sits
+        # immediately before the signature in the declared order.
+        #
+        # "From any working state" was the rule, and it meant the lifecycle's review stages
+        # were decoration: the built graph carried "Planned -> Accepted", so a compliance
+        # demonstration could be accepted with no agreed method and no evidence, and
+        # "In Work -> Released", so type design data could be signed off without passing
+        # design review, stress review or the airworthiness gate the states exist to
+        # represent. Three agents found their way to that (NI-00000494, NI-00000509,
+        # NI-00000497). A signatory's authority is not in question here - the gate is: a
+        # Part 21 Subpart J signature attests that the review happened, so the route to it
+        # has to come through the review.
+        #
+        # Rework still reaches approval, because rework returns through the same gate:
+        # Submitted -> Evidence in Work -> Submitted -> Accepted.
         for approved in present_approved:
-            allow(state, approved, signatory)
+            gate_index = state_names.index(approved) - 1
+            if gate_index >= 0 and state_names[gate_index] == state:
+                allow(state, approved, signatory)
+
+        # Retiring something that was never approved is still a signatory act, and there
+        # was no route for it at all: the working branch skipped a retired neighbour as
+        # "handled below, signatory only" and the handling below only ever covered the
+        # APPROVED states. The visible effect was that a tool or a consumable - whose
+        # lifecycle has no approved state, only Active - could never be withdrawn by
+        # anybody, administrator included. An obsolete sealant has to be withdrawable.
+        for retired in present_retired:
+            allow(state, retired, signatory)
 
         # Work may be abandoned or refused by the people doing it.
         for negative in present_negative:
@@ -360,6 +557,23 @@ def build_state_index() -> dict[str, list[str]]:
     for definition in ALL_TYPES:
         resolve(definition["typeName"])
     return resolved
+
+
+_STATES_BY_STEM: dict[str, list[str]] | None = None
+
+
+def states_of(stem: str) -> list[str] | None:
+    """The effective lifecycle states of one concrete type, by its company stem.
+
+    The builder resolves these once for the whole package; this is the same answer keyed
+    the way the security tables are keyed, so a test can check an invariant against the
+    states a type really has rather than against a hand-written list that drifts.
+    """
+    global _STATES_BY_STEM
+    if _STATES_BY_STEM is None:
+        _STATES_BY_STEM = {name.replace(BASE, "", 1): states
+                           for name, states in build_state_index().items()}
+    return _STATES_BY_STEM.get(stem)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

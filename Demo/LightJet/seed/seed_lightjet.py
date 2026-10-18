@@ -53,7 +53,7 @@ import lightjet_quality as QA                                        # noqa: E40
 import lightjet_requirements as REQ                                  # noqa: E402
 import lightjet_structure as ST                                      # noqa: E402
 import lightjet_value_attrs as VA                                    # noqa: E402
-from aviation_model import GROUPS, NUMBERING                          # noqa: E402
+from aviation_model import BASE, GROUPS, NUMBERING                    # noqa: E402
 from aviation_types import ALL_TYPES                                  # noqa: E402
 from build_customization import classification_folders               # noqa: E402
 
@@ -71,6 +71,19 @@ CHANGE_START_STATE = "Draft"
 # the first of these a type sets is the best available answer.
 ASSIGNEE_FROM = ("assignee", "engineeringOwner", "requirementOwner", "custodian",
                  "authorName", "checkedBy", "approvedBy")
+
+# Ownership stops BEFORE checkedBy and approvedBy. Those name the people who judged the
+# work, not the person who holds it, and making the airworthiness signatory the owner of
+# every released record would hand them edit-Own on the data they signed - the opposite of
+# what a signature means. A type that names nobody at all falls to OWNER_OF_LAST_RESORT.
+OWNER_FROM = ("assignee", "engineeringOwner", "requirementOwner", "custodian", "authorName")
+
+# The two types whose records name no person. A material specification belongs to the
+# design authority that chose it; a vendor representative to the buyer who deals with them.
+OWNER_OF_LAST_RESORT = {
+    "Material":  "m.sandoval",
+    "VendorRep": "y.cheng",
+}
 
 # The field each type already records its outcome in. A nonconformance closes with an MRB
 # disposition, a first article with a result, a supplier record with an approval status,
@@ -774,6 +787,12 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
         group_ids[name] = group_id
     say(f"groups: {len(group_ids)}")
 
+    # Kept because the ownership stage below needs to resolve a username the data names
+    # to the id transfer-owner takes - including on a re-run, where the account already
+    # exists and the loop below skips it.
+    user_ids: dict[str, str] = {u: deterministic_id(f"user:{u}")
+                                for u, _d, _r, _g in D.USERS}
+
     existing_users = {u.get("username") for u in (engine.get("/api/users") or [])}
     for username, display, role, groups in D.USERS:
         if username in existing_users:
@@ -976,6 +995,43 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
         if record.get("notes"):
             engine.patch(f"/api/plmobjects/{ids[pn]}/notes", {"notes": record["notes"]})
     say("attributes and notes applied")
+
+    # ── Ownership ───────────────────────────────────────────────────────────
+    # The loader creates every object, so without this stage the loader account owns all
+    # of them - and that quietly disables the entire `Own` column of the security model.
+    # The wildcard row grants edit-Own and delete-Own in every working state, so "Own"
+    # resolving to the loader on all 273 objects granted nothing to anybody: the
+    # inspector reported "edit is Own and Administrator owns it" on object after object.
+    # Nine role agents read that as a missing permission, and one filed it as the
+    # assignee of a compliance item being unable to record progress against the item
+    # assigned to them (NI-00000765). The permission was never missing; the owner was.
+    #
+    # The owner is not invented here - every type already names the person, and OWNER_FROM
+    # takes the first field that does. It has to run AFTER the attributes stage for that
+    # reason. Ownership moves through transfer-owner rather than the object PUT, because
+    # the PUT deliberately refuses to write owner_id and this route validates the new
+    # owner and logs an OwnerChanged event.
+    transferred = unowned = 0
+    for record in records:
+        pn = record["pn"]
+        if pn in untouched:
+            continue
+        history = record.get("history") or [(record.get("revision", "A"), None)]
+        latest = history[-1][0]
+        attrs = record.get("attrs") or {}
+        holder = next((attrs[f] for f in OWNER_FROM
+                       if isinstance(attrs.get(f), str) and attrs[f] in user_ids), None)
+        holder = holder or OWNER_OF_LAST_RESORT.get(
+            record["type"].replace(BASE, ""))
+        if not holder or holder not in user_ids:
+            unowned += 1
+            continue
+        engine.post(
+            f"/api/plmobjects/{ids[pn]}/revisions/{revision_ids[(pn, latest)]}"
+            f"/transfer-owner", {"newOwnerUserId": user_ids[holder]})
+        transferred += 1
+    say(f"ownership: {transferred} objects given the owner their data names"
+        + (f", {unowned} name nobody" if unowned else ""))
 
     # ── Classification assignment ────────────────────────────────────────
     # Runs after step C on purpose: it classifies the LATEST revision, which does not
