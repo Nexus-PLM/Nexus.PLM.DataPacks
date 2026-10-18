@@ -144,6 +144,27 @@ def test_a_locked_state_grants_edit_to_nobody_but_admin_and_a_finding():
                 f"{row['stateName']}"
 
 
+def test_nobody_edits_data_that_is_awaiting_a_decision():
+    """A systems engineer found he could edit a certification test report while it sat in
+    the airworthiness gate (NI-00000506). The honest answer is not that he is the wrong
+    group - it is that nobody edits data awaiting a signature, because the signatory
+    decides on the data they were shown. The way to change it is to pull it back out of
+    the gate, which the transition rules allow and which leaves a trace."""
+    for label, stem, states, model in models():
+        for state in states:
+            if state not in B.AWAITING_DECISION:
+                continue
+            for row in rows_for(model, state):
+                if subject(row) == "role:Admin":
+                    continue
+                assert row["editScope"] == "None", \
+                    f"{label}/{stem}: {subject(row)} may edit in {state}, which is " \
+                    "awaiting somebody else's decision"
+            # ...and it must still be possible to take it back out, or the lock is a trap.
+            out = [r for r in model["transitionRules"] if r["fromState"] == state]
+            assert out, f"{label}/{stem}: {state} locks editing with no way back out"
+
+
 def test_a_record_kept_for_life_is_deletable_only_by_an_administrator():
     """Customer Support held delete-Any on a mandatory service bulletin with life-of-type
     retention: the role that issues a bulletin could erase it (NI-00000510, NI-00000675).
@@ -205,7 +226,9 @@ def test_a_contributing_group_may_work_but_may_not_approve():
                     f"{stem}/{state}: contributing group {group} may transition"
                 assert row["deleteScope"] == "None", \
                     f"{stem}/{state}: contributing group {group} may delete"
-                if state not in B.RELEASE_LOCKED:
+                # A working state only. A state that is locked - approved, or awaiting
+                # somebody else's decision - is locked for a contributing group too.
+                if state not in B.RELEASE_LOCKED and state not in B.AWAITING_DECISION:
                     assert row["editScope"] == "Any", \
                         f"{stem}/{state}: contributing group {group} cannot do its work"
 

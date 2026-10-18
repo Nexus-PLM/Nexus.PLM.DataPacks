@@ -131,6 +131,19 @@ def indented(obj) -> bytes:
 RELEASE_LOCKED = {"Released", "Issued", "Accepted", "Closed", "Obsolete",
                   "Superseded", "Withdrawn", "Void", "Cancelled", "Dispositioned"}
 
+# States that mean "this is in front of somebody else for a decision". Editing is locked
+# here for the same reason it is locked after approval: the signatory decides on the data
+# they were shown, and a revision whose content can change underneath them makes the
+# signature meaningless. A systems engineer found he could edit a certification test report
+# while it sat in the airworthiness gate (NI-00000506), and the honest answer is not that
+# he is the wrong group - it is that NOBODY edits data that is awaiting a signature.
+#
+# Deliberately only these two, not the general review states: rework during a design or
+# stress review is normal and happens in place. Submission to an authority is different,
+# and the way to change submitted data is to pull it back out of the gate first - which
+# the transition rules allow, and which leaves a trace that it happened.
+AWAITING_DECISION = {"Airworthiness Sign-off", "Submitted"}
+
 # Which group owns each family. The owning group gets Any-scope edit in working states, so
 # a stress engineer cannot quietly re-release an interiors drawing - the demo's whole point
 # about who is allowed to do what.
@@ -283,7 +296,9 @@ def security_model(stem: str, state_names: list[str]) -> dict:
         return who in movers.get(state, set())
 
     for state in state_names:
-        locked = state in RELEASE_LOCKED
+        # Awaiting a decision locks editing exactly as approval does; what differs is that
+        # a revision can still come back out of the gate, which the transition rules allow.
+        locked = state in RELEASE_LOCKED or state in AWAITING_DECISION
         # A record kept for the life of the type is never deleted by the role that
         # authored it; it is withdrawn, which the lifecycle already provides for.
         own_delete = "None" if (locked or retained) else "Own"

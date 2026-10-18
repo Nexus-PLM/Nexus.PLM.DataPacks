@@ -366,8 +366,15 @@ def create_issue(admin: Agent, title: str, issue_type: str, severity: str,
         "title": title,
         "issueType": issue_type,
         "severity": severity,
-        "priority": "Critical" if severity == "Critical"
-        else "High" if severity == "Major" else "Medium",
+        # NexusIssue's `priority` is a closed list and these are its values. This used to
+        # send "Critical"/"High"/"Medium", which are the SEVERITY vocabulary, not the
+        # priority one - and it was accepted, because a declared list was not enforced on
+        # write. It is now (NI-00000678, NI-00000679), so the create fails outright instead
+        # of storing a value no filter will ever match. Every card this tool filed before
+        # that carries an out-of-list priority, which is why the board's priority column
+        # cannot be grouped on.
+        "priority": "P1 - Immediate" if severity == "Critical"
+        else "P2 - High" if severity == "Major" else "P3 - Normal",
         "reporter": reporter,
         "foundInApp": found_in_app,
         "environment": "Production",

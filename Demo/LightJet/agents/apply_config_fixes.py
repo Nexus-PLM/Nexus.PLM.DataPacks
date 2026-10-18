@@ -182,15 +182,19 @@ def fix_policy(me: Agent, dry: bool) -> dict:
                 stem = name.split("/", 1)[1].removesuffix(".security.json")
                 built[stem] = json.loads(z.read(name).decode("utf-8"))
 
+    # Its own file, and the same {"security": ...} shape the other tools read. An earlier
+    # version wrote a FLAT model over live-policy-backup.json, which every reader of that
+    # file unwraps - so the rollback data silently read as "37 types with no policy at
+    # all", and a diff against it would have reported the whole model as new.
     backup = {}
     for type_name in sorted(built):
-        backup[type_name] = me.get(f"/api/types/{type_name}/security")
-    io.open(REPORTS / "live-policy-backup.json", "w", encoding="utf-8").write(
+        backup[type_name] = {"security": me.get(f"/api/types/{type_name}/security")}
+    io.open(REPORTS / "policy-backup-before-apply.json", "w", encoding="utf-8").write(
         json.dumps(backup, indent=1))
 
     applied, failed = 0, []
     for type_name, model in sorted(built.items()):
-        old = backup.get(type_name) or {}
+        old = (backup.get(type_name) or {}).get("security") or {}
         same = (json.dumps(old.get("statePermissions"), sort_keys=True)
                 == json.dumps(model["statePermissions"], sort_keys=True)
                 and json.dumps(old.get("transitionRules"), sort_keys=True)
