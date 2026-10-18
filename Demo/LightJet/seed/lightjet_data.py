@@ -54,34 +54,43 @@ SUP_ACTIVE, SUP_DRAFT, SUP_REVIEW = "Active", "Draft", "In Review"
 # the security model actually turn on.
 
 USERS = [
-    # username,        display name,        role,     groups
+    # username,        display name,        accountType, groups
+    #
+    # accountType is NOT free text. The Engine evaluates policy against exactly three
+    # account types - "Admin", "Member" and "Guest" (PackageValidator rejects any other
+    # role subject, and SeedService issues "Member" to an ordinary user). Anything else
+    # matches no row and falls through to the "*" row, which grants read and edit-Own
+    # and NO create. This file said "User" for months, which is why nine role agents all
+    # reported that they could not create the objects their role exists to create: the
+    # customer support agent could not raise a problem report, the project manager could
+    # not create a work item. It read as a permissions design and it was a typo.
     ("l.harkness", "Lena Harkness", "Admin",
      ["LSS Airworthiness and Certification", "LSS Change Control Board"]),
-    ("d.okonjo", "Daniel Okonjo", "User",
+    ("d.okonjo", "Daniel Okonjo", "Member",
      ["LSS Design Engineering", "LSS Change Control Board"]),
-    ("m.sandoval", "Mira Sandoval", "User", ["LSS Design Engineering"]),
-    ("p.lindqvist", "Petra Lindqvist", "User", ["LSS Stress and Loads"]),
-    ("r.achebe", "Rotimi Achebe", "User", ["LSS Systems Engineering"]),
-    ("s.vanderberg", "Sanne van der Berg", "User",
+    ("m.sandoval", "Mira Sandoval", "Member", ["LSS Design Engineering"]),
+    ("p.lindqvist", "Petra Lindqvist", "Member", ["LSS Stress and Loads"]),
+    ("r.achebe", "Rotimi Achebe", "Member", ["LSS Systems Engineering"]),
+    ("s.vanderberg", "Sanne van der Berg", "Member",
      ["LSS Systems Engineering", "LSS Change Control Board"]),
-    ("k.tanaka", "Kenji Tanaka", "User",
+    ("k.tanaka", "Kenji Tanaka", "Member",
      ["LSS Quality Assurance", "LSS Material Review Board"]),
-    ("a.novak", "Anja Novak", "User",
+    ("a.novak", "Anja Novak", "Member",
      ["LSS Quality Assurance", "LSS Material Review Board"]),
-    ("t.brennan", "Tom Brennan", "User", ["LSS Manufacturing Engineering"]),
-    ("y.cheng", "Yuan Cheng", "User", ["LSS Supply Chain"]),
-    ("f.mbeki", "Faith Mbeki", "User", ["LSS Customer Support"]),
-    ("h.okafor", "Helena Okafor", "User",
+    ("t.brennan", "Tom Brennan", "Member", ["LSS Manufacturing Engineering"]),
+    ("y.cheng", "Yuan Cheng", "Member", ["LSS Supply Chain"]),
+    ("f.mbeki", "Faith Mbeki", "Member", ["LSS Customer Support"]),
+    ("h.okafor", "Helena Okafor", "Member",
      ["LSS Programme Management", "LSS Change Control Board"]),
-    ("j.whitlock", "James Whitlock", "User",
+    ("j.whitlock", "James Whitlock", "Member",
      ["LSS Project Management", "LSS Programme Management"]),
     # A DER finds compliance on the FAA's behalf. Membership of Airworthiness gives the
     # read access to type design data that the role needs; the DER group is what carries
     # the delegation itself.
-    ("c.delacroix", "Camille Delacroix", "User",
+    ("c.delacroix", "Camille Delacroix", "Member",
      ["FAA Designated Engineering Representatives",
       "LSS Airworthiness and Certification"]),
-    ("g.rossi", "Giulia Rossi", "User",
+    ("g.rossi", "Giulia Rossi", "Member",
      ["LSS Airworthiness and Certification", "LSS Material Review Board"]),
 ]
 
