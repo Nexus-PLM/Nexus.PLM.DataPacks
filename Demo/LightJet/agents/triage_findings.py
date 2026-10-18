@@ -197,7 +197,17 @@ EXCESS_WORDS = ("no permission check", "no authorisation check", "writable", "de
 
 
 def needs_retest(row: dict) -> bool:
-    """True when a finding could be the accountType defect rather than the product."""
+    """True when a finding could be the accountType defect rather than the product.
+
+    A finding that says it has already been re-tested is never held back, whatever its
+    wording. The word-matching below is a guess about whether a denial was checked; an
+    explicit `retested` flag is knowledge, and knowledge wins. Without this the rule
+    swallowed the keystone finding of the whole exercise - "released data can never be
+    revised" - purely because the summary contains "can never", when three agents had
+    re-tested it against corrected accounts and I had confirmed the cause in source.
+    """
+    if row.get("retested"):
+        return False
     if row.get("category") != "security":
         return False
     text = (row.get("summary") or "").lower()

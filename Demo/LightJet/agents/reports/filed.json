@@ -43,6 +43,10 @@
   "partNumber": "NI-00000746",
   "theme": "Unclassified"
  },
+ "Engine API|admin any current data edit gated never": {
+  "partNumber": "NI-00000754",
+  "theme": "Authorisation: a role cannot do its job"
+ },
  "Engine API|administrator another api caller inspect inspect may": {
   "partNumber": "NI-00000673",
   "theme": "Security tooling and refusal messages"
@@ -50,6 +54,10 @@
  "Engine API|administrator find message names non out reason": {
   "partNumber": "NI-00000716",
   "theme": "Authorisation: a role cannot do its job"
+ },
+ "Engine API|airworthiness alone assignee configured decided editable group": {
+  "partNumber": "NI-00000755",
+  "theme": "Change and approval process"
  },
  "Engine API|all check create has path permission revision": {
   "partNumber": "NI-00000676",
@@ -255,6 +263,10 @@
   "partNumber": "NI-00000701",
   "theme": "Unclassified"
  },
+ "Other|accreditation checks demands holds nothing performing process": {
+  "partNumber": "NI-00000752",
+  "theme": "Data model and attribute coverage"
+ },
  "Other|across axis different halves same trace two": {
   "partNumber": "NI-00000619",
   "theme": "Traceability and navigation"
@@ -337,6 +349,10 @@
  },
  "Other|against airframe condition instance measured nowhere part": {
   "partNumber": "NI-00000583",
+  "theme": "Change and approval process"
+ },
+ "Other|against approval approver author check clear gates": {
+  "partNumber": "NI-00000750",
   "theme": "Change and approval process"
  },
  "Other|against compare last one released revision revisions": {
@@ -501,6 +517,10 @@
  },
  "Other|approval bare flip has process release route": {
   "partNumber": "NI-00000567",
+  "theme": "Change and approval process"
+ },
+ "Other|approval coming der filters has ignored see": {
+  "partNumber": "NI-00000751",
   "theme": "Change and approval process"
  },
  "Other|approved bump content frozen place revision revision": {
@@ -691,6 +711,10 @@
   "partNumber": "NI-00000508",
   "theme": "Authorisation: data not protected"
  },
+ "Other|caller choice gaps guess make number numbering": {
+  "partNumber": "NI-00000753",
+  "theme": "Data model and attribute coverage"
+ },
  "Other|cancreate carries has header object payload permissions": {
   "partNumber": "NI-00000641",
   "theme": "Quality and conformity"
@@ -746,6 +770,10 @@
  "Other|check citing drawing drawingnumber exist free link": {
   "partNumber": "NI-00000608",
   "theme": "Traceability and navigation"
+ },
+ "Other|checkable consumable limit own record sealant service": {
+  "partNumber": "NI-00000749",
+  "theme": "Authorisation: a role cannot do its job"
  },
  "Other|checked limit location material never nowhere record": {
   "partNumber": "NI-00000535",
