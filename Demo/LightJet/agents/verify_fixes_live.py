@@ -30,7 +30,7 @@ class Result:
 
     def check(self, name: str, passed: bool, detail: str = "") -> None:
         self.rows.append((name, passed, detail))
-        print(f"  {'PASS' if passed else 'FAIL'}  {name}" + (f"  — {detail}" if detail else ""))
+        print(f"  {'PASS' if passed else 'FAIL'}  {name}" + (f"  - {detail}" if detail else ""))
 
     def report(self) -> int:
         failed = [r for r in self.rows if not r[1]]
@@ -63,7 +63,7 @@ def main() -> int:
 
     plate_id = object_id(PLATE)
 
-    print("\n── The administrative surfaces are administrator-only ──")
+    print("\n== The administrative surfaces are administrator-only ==")
     groups = admin.get("/api/groups") or []
     target = next((g for g in groups if g.get("name") == "LSS Stress and Loads"), None)
     if target is None:
@@ -91,14 +91,14 @@ def main() -> int:
         r.check("PUT /api/lifecycle refuses a Member",
                 status_of(designer, "PUT", "/api/lifecycle", lifecycle) == 403)
 
-    print("\n── Ownership cannot be taken ──")
+    print("\n== Ownership cannot be taken ==")
     r.check("transfer-owner refuses a non-owner with no edit rights",
             status_of(approver, "POST",
                       f"/api/plmobjects/{plate_id}/revisions/"
                       f"{(admin.latest(PLATE) or {}).get('revisionId')}/transfer-owner",
                       {"newOwnerUserId": "c.delacroix"}) == 403)
 
-    print("\n── The revision create path is checked ──")
+    print("\n== The revision create path is checked ==")
     import uuid
     invented = str(uuid.uuid4())
     r.check("PUT a brand-new revision directly in Released is refused",
@@ -106,17 +106,17 @@ def main() -> int:
                       {"revisionId": invented, "plmObjectId": plate_id,
                        "revision": "Z", "status": "Released", "extensionData": "{}"}) == 403)
 
-    print("\n── Preferences are the caller's own ──")
+    print("\n== Preferences are the caller's own ==")
     r.check("another user's preferences are refused",
             status_of(designer, "GET", "/api/user-preferences/c.delacroix/folder-columns") == 403)
 
-    print("\n── Trace links reach released endpoints ──")
+    print("\n== Trace links reach released endpoints ==")
     traces = designer.get(f"/api/requirement-trace-links/for/{plate_id}")
     reachable = traces is not None
     r.check("the trace tree loads for a released part as a non-owner", reachable,
             "" if reachable else "still refused or empty")
 
-    print("\n── Revise is judged by the landing state ──")
+    print("\n== Revise is judged by the landing state ==")
     latest = admin.latest(PLATE) or {}
     print(f"  {PLATE} is at rev {latest.get('revision')} / {latest.get('status')}")
     r.check("airworthiness may NOT revise (approves, does not author)",
