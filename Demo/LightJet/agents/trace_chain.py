@@ -29,6 +29,7 @@ ROUTES = {"ECR": "ecrs", "ECO": "ecos", "ECN": "ecns"}
 def walk(me: Agent, start: str, depth: int = 4):
     seen: dict[str, int] = {}
     gaps: list[str] = []
+    missing_routes: set[str] = set()
     order: list[tuple[int, str, str, str]] = []
 
     def visit(pn: str, level: int, why: str, via: str):
@@ -80,11 +81,37 @@ def walk(me: Agent, start: str, depth: int = 4):
                     visit(target, level + 1,
                           f"{row.get('linkTypeName', 'references')} of {pn}", pn)
 
-        # 3. Where the part is used.
+        # 3. Where the part is used, and what it is made of.
+        #
+        # Both directions, because the question this tool exists to answer starts at an
+        # AEROPLANE. An aircraft is the top of its own structure, so walking only upwards
+        # reaches nothing and the tool would report the product as having no chain when in
+        # fact it had not been asked properly.
         for row in me.get(f"/api/plmobjects/{object_id(pn)}/bom-parents") or []:
             target = row.get("parentPartNumber")
             if target:
                 visit(target, level + 1, f"assembly containing {pn}", pn)
+        for row in me.get(f"/api/plmobjects/{object_id(pn)}/bom-children") or []:
+            target = row.get("childPartNumber")
+            if target:
+                visit(target, level + 1, f"installed on {pn}", pn)
+
+        # 3b. The reverse lookups, attempted rather than assumed.
+        #
+        # Asking "which change objects name me as an affected item" and "which objects
+        # reference me" is how you get from a finding on an aeroplane to the change it
+        # caused. Neither route exists: affected-items is only {changeId}/affected-items,
+        # and references are loaded only for a source revision
+        # (ObjectReferencesController.LoadForSourceRevisionAsync). These calls are left in
+        # so the gap is demonstrated by its own 404 rather than taken on trust.
+        for route, label in ((f"/api/plmobjects/{object_id(pn)}/affected-by",
+                              "change objects naming this as affected"),
+                             (f"/api/plmobjects/{object_id(pn)}/referenced-by",
+                              "objects referencing this")):
+            if me.get(route) is None:
+                # Recorded once, not once per object. A missing route is one fact about
+                # the API, and repeating it per object buries the chain it is reporting on.
+                missing_routes.add(label + " (no such endpoint)")
 
         # 4. Requirement traces.
         traces = me.traces(pn)
@@ -107,6 +134,7 @@ def walk(me: Agent, start: str, depth: int = 4):
                 gaps.append(f"{pn}.{field} -> '{tidy(value, 60)}' is TEXT, not a link")
 
     visit(start, 0, "the starting point", "-")
+    gaps.extend(sorted(missing_routes))
     return order, gaps, seen
 
 
