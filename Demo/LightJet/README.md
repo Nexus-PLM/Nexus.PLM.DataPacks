@@ -172,8 +172,18 @@ representation for a BOM link, which is why this dataset needs a loader driving 
 API rather than shipping as a pack. The customization set carries the *shape*; the loader
 creates the *content*.
 
-**`canCreate` is false in every security model.** The first `true` anywhere on a site flips
-object creation to an allowlist for every type at once.
+**`canCreate` names the groups that author each type.** It used to be false on every row of
+every model, which — before Services PR #798 — was the most dangerous line in this package:
+`CanCreateAsync` treated create as opt-in, so a model that denied it to every subject granted
+it to the whole site. Create is now deny-by-default for any type that carries a security model
+at all, which means the grants have to be real: every one of the 47 models names at least one
+group that may author its type, and the wildcard row never does. A type with no granting row
+can be created by nobody but an administrator, and `verify/VerifyPackage.csproj` fails the
+package if one appears.
+
+Because of that pairing, **this package and an Engine built from #798 or later must go out
+together.** The old Engine with this package is harmless; a new Engine without it leaves every
+non-administrator unable to create anything in NX-200.
 
 **`defaultValue` is always a JSON string.** The Engine reads a type file through
 `TypeAttributeEntry`, whose `defaultValue` is `string?`. A raw `true` or `42` throws on
