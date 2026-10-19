@@ -52,16 +52,44 @@ Password for every agent: `Nexus2025!` · Engine: `https://192.168.1.47:5000`
 
 ### Talking to each other
 
-Discussion threads are the project's record of who said what.
-
 ```python
-me.say("NX-200 ATA 21 ram air scoop redesign", "message text")   # posts, opening if new
-me.read_thread("NX-200 ATA 21 ram air scoop redesign")           # what others have said
+me.read_thread("NX-200 ATA 21 ram air scoop redesign")       # read FIRST, every time
+me.say("NX-200 ATA 21 ram air scoop redesign", "...")        # posts, opening if new
+me.ask("p.lindqvist", "LSS-21-0014 attachment", "...")       # one-to-one thread
+me.say(subject, text, formal=True)                           # a signed position only
 ```
 
-**Read the thread before you post.** Answer what has actually been asked rather than
-narrating your own work into the void. Keep posts short and specific: what you did, what
-you found, what you need from whom.
+**A message is a few sentences. It is capped at 900 characters and `say` will refuse a
+longer one.** The first run of this scenario produced 56 messages averaging five thousand
+characters, one over twenty thousand - every agent posting a finished report, with its own
+headings, into a thread nobody had read yet. 340,000 characters, and the actual decision
+was impossible to find. That is not a design review, it is nine people filing documents at
+each other.
+
+How to post:
+
+* **Read the thread first.** If nobody has answered your last message, do not post
+  another one restating it. Go and do something else, or ask somebody directly.
+* **One point per message.** If you have three things to say, that is three messages, and
+  probably two of them are for different people.
+* **Name who you need the next thing from, and what it is.** "p.lindqvist - does the
+  isolation detail change the joint allowable? I need yes or no before I release rev B."
+  A message that asks nobody for anything is a note to yourself; put it on the object.
+* **Answer what was actually asked.** If someone asked you a yes/no question, the first
+  word of your reply is yes or no.
+* **Put the detail on the OBJECT, not in the thread.** Attributes, notes, a finding, a
+  link. Then reference it: "written up on LSS-21-0014 rev B, see the notes." A thread is
+  for deciding things; the record lives on the data, where it can be navigated to and
+  where it survives.
+* **Use `me.ask()` for one-to-one.** Most of what you need is a question for one person,
+  not an announcement to nine, and a private thread is how that conversation really
+  happens. It keeps the shared threads readable.
+* **`formal=True` is for a signed position only** - a disposition, a DER decision, a
+  refusal somebody will be held to. It raises the cap to 2500 characters. It is not for
+  "my message was too long".
+
+Conversations are turn-taking. It is better to post one sentence and wait than to write
+the whole exchange yourself.
 
 ---
 

@@ -47,6 +47,17 @@ ACTIVITY_LOG = Path(os.environ.get("NEXUS_ACTIVITY_LOG",
 _LOCK = threading.Lock()
 
 
+# How long a discussion message may be. A chat message is a few sentences; the first run
+# of this scenario averaged five thousand characters a message and the longest was over
+# twenty thousand, which is a document posted into a conversation.
+MESSAGE_LIMIT = 900
+
+# A signed position - a disposition, a DER decision, a refusal somebody will be held to -
+# earns more room. Still capped: beyond this it belongs on the object as a finding or a
+# note, where it can be navigated to and where it survives the thread.
+FORMAL_MESSAGE_LIMIT = 2500
+
+
 class Refused(Exception):
     """The server refused this action. Carries the status and the server's reason."""
 
@@ -247,7 +258,7 @@ class Agent:
         return self.get("/api/discussions") or []
 
     def start_thread(self, subject, first_message, participants=None,
-                     linked_part_numbers=None):
+                     linked_part_numbers=None, formal=False):
         """Open a discussion thread and post the opening message."""
         existing = next((t for t in self.threads() if t.get("subject") == subject), None)
         if existing:
@@ -260,21 +271,57 @@ class Agent:
                 "linkedObjectIds": [object_id(p) for p in (linked_part_numbers or [])],
             })
             thread_id = created["id"] if isinstance(created, dict) else created
-        self.say_in(thread_id, first_message)
+        self.say_in(thread_id, first_message, formal=formal)
         self.log("start_thread", f"{subject}")
         return thread_id
 
-    def say(self, subject, text, participants=None, linked_part_numbers=None):
+    def say(self, subject, text, participants=None, linked_part_numbers=None,
+            formal=False):
         """Post to a thread by subject, opening it if nobody has yet."""
         thread = next((t for t in self.threads() if t.get("subject") == subject), None)
         if thread is None:
-            return self.start_thread(subject, text, participants, linked_part_numbers)
-        self.say_in(thread["id"], text)
+            return self.start_thread(subject, text, participants, linked_part_numbers,
+                                     formal=formal)
+        self.say_in(thread["id"], text, formal=formal)
         return thread["id"]
 
-    def say_in(self, thread_id, text):
-        self.post(f"/api/discussions/{thread_id}/messages", {"text": text})
-        self.log("say", text[:200], thread=thread_id)
+    def say_in(self, thread_id, text, formal=False):
+        """Post one message. Refuses an essay.
+
+        The first run of this scenario produced 56 messages averaging five thousand
+        characters, one of them over twenty thousand - each agent posting a finished
+        report with its own headings into a thread nobody was reading yet. That is not
+        how a design review sounds. People say one thing, name who they need it from,
+        and stop; the next person answers THAT. The length limit is enforced here rather
+        than asked for in the brief, because the brief already asked.
+
+        `formal=True` raises the limit for the one case that earns it - a signed
+        position, a disposition, a DER decision - which is a document somebody will be
+        held to, not a chat message. It is still capped.
+        """
+        limit = FORMAL_MESSAGE_LIMIT if formal else MESSAGE_LIMIT
+        body = (text or "").strip()
+        if len(body) > limit:
+            raise ValueError(
+                f"This message is {len(body)} characters; the limit is {limit}. "
+                "Say one thing, name who you need the next thing from, and post it. "
+                "Put the detail on the OBJECT - attributes, notes, a finding - where it "
+                "can be navigated to, and reference it. If this really is a formal "
+                "position somebody will be held to, pass formal=True.")
+        self.post(f"/api/discussions/{thread_id}/messages", {"text": body})
+        self.log("say", body[:200], thread=thread_id)
+
+    def ask(self, person, subject, text):
+        """Open (or continue) a ONE-TO-ONE thread with one colleague and ask them something.
+
+        Most of what these roles need from each other is a question for one person, not an
+        announcement to nine. A private thread between two people is how that conversation
+        actually happens, and it keeps the shared threads readable - the first run put
+        every exchange into two threads, so the record of a change ran to 340,000
+        characters and nobody could find the decision in it.
+        """
+        return self.say(f"{subject} - {self.username} and {person}", text,
+                        participants=[person])
 
     def read_thread(self, subject):
         thread = next((t for t in self.threads() if t.get("subject") == subject), None)
