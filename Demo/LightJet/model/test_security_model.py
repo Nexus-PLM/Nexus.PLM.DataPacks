@@ -40,9 +40,28 @@ GROUP_NAMES = {name for name, _description in A.GROUPS}
 
 
 def models():
-    """Every (label, stem, states, built model) the model declares."""
+    """Every (label, stem, states, built model) the model declares.
+
+    Every CONCRETE type that ships a policy, not a hand-picked sample. It started as six
+    representative lifecycles, which is how a defect in the Aircraft type's delete scope
+    survived the first run of these tests: the sample is the part you remember to look at,
+    and the type added next month is the part you do not. The LIFECYCLES table is kept
+    because a named lifecycle gives a readable label when something fails.
+    """
+    sampled = {stem for _label, stem, _states in LIFECYCLES}
     for label, stem, states in LIFECYCLES:
         yield label, stem, states, B.security_model(stem, states)
+
+    for definition in (B.CONCRETE_ITEM_TYPES + B.CONCRETE_DOC_TYPES
+                       + B.CONCRETE_REQ_TYPES + B.CONCRETE_MATERIAL_TYPES
+                       + B.CONCRETE_RECORD_TYPES):
+        stem = definition["typeName"].replace(B.BASE, "", 1)
+        if stem in sampled:
+            continue
+        states = B.states_of(stem)
+        if not states:
+            continue
+        yield stem, stem, states, B.security_model(stem, states)
 
 
 def rows_for(model, state):
@@ -279,8 +298,22 @@ def test_an_approval_is_entered_only_from_the_state_before_it_and_only_by_a_sign
                 continue
             assert f"group:{B.SIGNATORY_GROUP}" in rule["allowedRoles"], \
                 f"{label}/{stem}: {rule['toState']} entered without a signatory"
-            assert B.OWNING_GROUP.get(stem, "\0") not in rule["allowedRoles"], \
-                f"{label}/{stem}: the owning group may enter {rule['toState']} itself"
+            # The owning group must not be able to approve its own work - UNLESS it IS the
+            # signatory group, which is the case for the types airworthiness both authors
+            # and signs: the project certification plan, the airworthiness release, a
+            # published limitation. That is not self-approval being waved through, it is
+            # what a Part 21 Subpart J design organisation is: the signatories are a pool
+            # of named individuals holding a privilege, and the group is that pool.
+            #
+            # What the model still cannot express is that the approving PERSON must differ
+            # from the authoring person. Policy resolves per group, not per individual, so
+            # one member of airworthiness can sign their own plan. Two reporters found that
+            # from different angles (NI-00000488, NI-00000750) and it is an open product
+            # question - author-versus-approver - not something this model can close.
+            owner = B.OWNING_GROUP.get(stem)
+            if owner and owner != B.SIGNATORY_GROUP:
+                assert f"group:{owner}" not in rule["allowedRoles"], \
+                    f"{label}/{stem}: the owning group may enter {rule['toState']} itself"
             gate = states[states.index(rule["toState"]) - 1]
             assert rule["fromState"] == gate, \
                 f"{label}/{stem}: {rule['toState']} may be entered from " \

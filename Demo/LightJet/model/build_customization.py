@@ -37,7 +37,7 @@ from aviation_model import (  # noqa: E402
 import templates as TPL                                               # noqa: E402
 from aviation_types import (  # noqa: E402
     ALL_TYPES, CONCRETE_DOC_TYPES, CONCRETE_ITEM_TYPES, CONCRETE_MATERIAL_TYPES,
-    CONCRETE_REQ_TYPES, t,
+    CONCRETE_RECORD_TYPES, CONCRETE_REFERENCE_TYPES, CONCRETE_REQ_TYPES, t,
 )
 
 VERSION = "1.0.0"
@@ -184,6 +184,27 @@ OWNING_GROUP = {
     "ServiceBulletin": "LSS Customer Support",
     "ProcessSpec": "LSS Manufacturing Engineering",
     "SupplierQualRecord": "LSS Supply Chain",
+    # The records added for the gaps the exercise found. Each is owned by the group whose
+    # job it is, not by the group that reads it most.
+    #
+    # A structural substantiation is stress's own output, and this is the first type on the
+    # site they own - which was itself the finding: the stress role had no type of its own
+    # at all, so everything they produced lived on somebody else's object (NI-00000577).
+    "StructuralSubstantiation": "LSS Stress and Loads",
+    "Concession": "LSS Quality Assurance",
+    "CorrectiveAction": "LSS Quality Assurance",
+    "InspectionRecord": "LSS Quality Assurance",
+    # Manufacturing builds the physical article and knows its as-built state.
+    "SerialisedUnit": "LSS Manufacturing Engineering",
+    "InServiceOccurrence": "LSS Customer Support",
+    "OperatorComplianceRecord": "LSS Customer Support",
+    # A limitation is published under the DOA privilege, so airworthiness owns the text.
+    "AirworthinessLimitation": "LSS Airworthiness and Certification",
+    "MaintenanceTask": "LSS Customer Support",
+    # A finding is the AUTHORITY's statement, so the applicant does not own it. The
+    # airworthiness group holds it because somebody on the applicant's side has to answer
+    # it, and the DER's own row is added by AUTHORITY_SCOPE below.
+    "CertificationFinding": "LSS Airworthiness and Certification",
     "AircraftRequirement": "LSS Systems Engineering",
     "OperatorRequirement": "LSS Systems Engineering",
     "SystemRequirement": "LSS Systems Engineering",
@@ -233,6 +254,28 @@ CONTRIBUTING_GROUPS = {
     # An operator requirement is allocated DOWN into system requirements, which is
     # systems engineering's work even though the customer-facing role owns the record.
     "OperatorRequirement": ["LSS Systems Engineering"],
+    # A substantiation is stress's output but design has to answer a negative margin, and
+    # airworthiness signs it - so both contribute without being able to approve it.
+    "StructuralSubstantiation": ["LSS Design Engineering"],
+    # A concession departs from the DESIGN, so engineering has to justify it; quality
+    # issues and controls it.
+    "Concession": ["LSS Design Engineering", "LSS Manufacturing Engineering"],
+    # The action usually lands on the people who run the process.
+    "CorrectiveAction": ["LSS Manufacturing Engineering", "LSS Supply Chain"],
+    "InspectionRecord": ["LSS Manufacturing Engineering"],
+    # The fleet role reads and annotates as-built state constantly; quality dispositions
+    # against a unit.
+    "SerialisedUnit": ["LSS Customer Support", "LSS Quality Assurance"],
+    # An occurrence is triaged by the designers of the system that misbehaved.
+    "InServiceOccurrence": ["LSS Design Engineering", "LSS Systems Engineering",
+                            "LSS Quality Assurance"],
+    # A limitation's substance comes from whoever's analysis produced it.
+    "AirworthinessLimitation": ["LSS Stress and Loads", "LSS Systems Engineering",
+                                "LSS Customer Support"],
+    "MaintenanceTask": ["LSS Design Engineering", "LSS Stress and Loads"],
+    # Answering a finding is the work of whichever discipline the finding is about.
+    "CertificationFinding": ["LSS Systems Engineering", "LSS Stress and Loads",
+                             "LSS Design Engineering", "LSS Quality Assurance"],
 }
 
 # The delegated authority. A DER finds compliance on the Administrator's behalf, which is
@@ -252,7 +295,16 @@ AUTHORITY_GROUP = "FAA Designated Engineering Representatives"
 # underneath it. Not the design itself - a DER approves DATA, not parts.
 AUTHORITY_SCOPE = {"ComplianceReport", "QualTestPlan", "QualTestReport", "SafetyAssessment",
                    "SwPlan", "EMICAR", "PrjSpecificCertPlan", "CertRequirement",
-                   "AirworthinessRelease"}
+                   "AirworthinessRelease",
+                   # A structural substantiation is compliance evidence for the CS-23
+                   # structural paragraphs, so it is squarely inside a DER's delegation.
+                   "StructuralSubstantiation",
+                   # And a finding is the authority's own instrument. Without this the DER
+                   # could not read back the finding she raised.
+                   "CertificationFinding",
+                   # A limitation is agreed WITH the authority, so it has to be visible to
+                   # the person who agreed it.
+                   "AirworthinessLimitation"}
 
 # The state a finding re-opens an accepted demonstration into.
 FINDING_STATE = "Finding Open"
@@ -265,7 +317,18 @@ FINDING_STATE = "Finding Open"
 # withdrawal states exist precisely so that a bulletin can be retired without vanishing.
 RETAINED_FOR_LIFE = {"ServiceBulletin", "AirworthinessRelease", "CofC", "FaiReport",
                      "Ncr", "ComplianceReport", "SafetyAssessment", "QualTestReport",
-                     "SupplierQualRecord", "Aircraft"}
+                     "SupplierQualRecord", "Aircraft",
+                     # The new records, all of which are audit evidence. A quality record
+                     # held under a retention class being deletable by one person was
+                     # reported in its own right (NI-00000686), and these are exactly that
+                     # class of record: a concession authorises a departure from the
+                     # approved design, an inspection record is the measurement an
+                     # acceptance rests on, and a serialised unit is the identity of a
+                     # physical article that may be flying.
+                     "StructuralSubstantiation", "Concession", "CorrectiveAction",
+                     "InspectionRecord", "SerialisedUnit", "InServiceOccurrence",
+                     "OperatorComplianceRecord", "AirworthinessLimitation",
+                     "CertificationFinding"}
 
 
 def security_model(stem: str, state_names: list[str]) -> dict:
@@ -892,8 +955,16 @@ def build(out_dir: Path) -> Path:
 
     # One security model per concrete type. Abstract bases get none: a policy on an abstract
     # type can never be the one evaluated, because no object is ever of that type.
+    # Every CONCRETE type that holds objects gets a model. A type that ships without one
+    # is not neutral: GetModelAsync returns null, which the evaluator reads as "no policy -
+    # anyone may look", and edit falls back to owner-only. So a new type added without a
+    # policy is simultaneously too open to read and too closed to work on, and nothing
+    # says so. The reference KINDS are deliberately excluded - they are link rows whose
+    # visibility should follow their endpoints, which is a product question (NI-00000503),
+    # and a policy on the link cannot answer it.
     for definition in (CONCRETE_ITEM_TYPES + CONCRETE_DOC_TYPES
-                       + CONCRETE_REQ_TYPES + CONCRETE_MATERIAL_TYPES):
+                       + CONCRETE_REQ_TYPES + CONCRETE_MATERIAL_TYPES
+                       + CONCRETE_RECORD_TYPES):
         name = definition["typeName"]
         stem = name[len(BASE):]
         model = security_model(stem, state_index[name])

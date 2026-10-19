@@ -395,10 +395,53 @@ NUMBERING = [
     schema(
         f"{PREFIX}LssQualityRecord",
         "Quality records, sequenced per kind: first article, nonconformance, certificate of "
-        "conformity, airworthiness release, supplier approval. e.g. LSS-NCR-00117.",
+        "conformity, airworthiness release, supplier approval, concession, corrective "
+        "action and inspection record. e.g. LSS-NCR-00117.",
         [_seg("prefix", "LSS"), _seg("separator", "-"),
-         _seg("lov", lov=["FAI", "NCR", "COC", "ARC", "SQR"]),
+         _seg("lov", lov=["FAI", "NCR", "COC", "ARC", "SQR",
+                          # A concession and a corrective action are each a record in
+                          # their own right rather than fields on a nonconformance, so
+                          # they sequence here beside it (NI-00000595, NI-00000570).
+                          "CON", "CAR", "INSP"]),
          _seg("separator", "-"), _seg("counter", digits=5)],
+    ),
+    schema(
+        f"{PREFIX}LssSubstantiation",
+        "Structural substantiation and analysis reports, sequenced per discipline: static, "
+        "fatigue, damage tolerance, flutter, loads, thermal. e.g. LSS-STR-FAT-0007.",
+        [_seg("prefix", "LSS-STR"), _seg("separator", "-"),
+         _seg("lov", lov=["STAT", "FAT", "DT", "FLUT", "LOAD", "THRM", "MECH"]),
+         _seg("separator", "-"), _seg("counter", digits=4)],
+    ),
+    schema(
+        f"{PREFIX}LssSerialisedUnit",
+        "As-built serialised units - the physical article, as distinct from the part "
+        "definition it was built to. e.g. LSS-SN-000142.",
+        [_seg("prefix", "LSS-SN"), _seg("separator", "-"), _seg("counter", digits=6)],
+    ),
+    schema(
+        f"{PREFIX}LssInServiceRecord",
+        "Continued-airworthiness records against a delivered airframe, sequenced per kind: "
+        "in-service occurrence, inspection finding, operator compliance return. "
+        "e.g. LSS-ISR-OCC-0031.",
+        [_seg("prefix", "LSS-ISR"), _seg("separator", "-"),
+         _seg("lov", lov=["OCC", "FIND", "COMP"]),
+         _seg("separator", "-"), _seg("counter", digits=4)],
+    ),
+    schema(
+        f"{PREFIX}LssPublication",
+        "Publications issued to operators and crews, sequenced per kind: airworthiness "
+        "limitation, flight manual supplement, maintenance programme, maintenance task, "
+        "instructions for continued airworthiness. e.g. LSS-PUB-ALS-0002.",
+        [_seg("prefix", "LSS-PUB"), _seg("separator", "-"),
+         _seg("lov", lov=["ALS", "AFMS", "MP", "MPTASK", "ICA"]),
+         _seg("separator", "-"), _seg("counter", digits=4)],
+    ),
+    schema(
+        f"{PREFIX}LssCertificationFinding",
+        "Findings, observations and published limitations raised by the authority or by a "
+        "delegated representative. e.g. LSS-CF-0014.",
+        [_seg("prefix", "LSS-CF"), _seg("separator", "-"), _seg("counter", digits=4)],
     ),
     schema(
         f"{PREFIX}LssServiceBulletin",

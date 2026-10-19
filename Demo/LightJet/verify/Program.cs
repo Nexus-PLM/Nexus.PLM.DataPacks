@@ -132,6 +132,13 @@ static class OotbBases
     {
         "MissionRequirement", "StakeholderRequirement", "SystemRequirement",
         "SubsystemRequirement", "ComponentRequirement", "BusinessRequirement",
+        // A reference KIND is a type in this platform: ObjectReferenceLinkService
+        // discovers every non-abstract descendant of ReferenceLinkBase from the registry,
+        // so a site declares its own kinds by deriving from it and they appear in
+        // GET .../references/kinds with no code change. It is abstract and registered out
+        // of the box, and it was simply missing from this list - so the first package to
+        // use the mechanism as designed was reported as naming an unknown base.
+        "ReferenceLinkBase",
     };
 
     public static bool Contains(string name) => Roots.Contains(name) || AbstractLeaves.Contains(name);

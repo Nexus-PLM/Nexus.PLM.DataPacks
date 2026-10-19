@@ -131,6 +131,23 @@ TYPE_DESIGN_ITEM_ATTRS = [
     a("lifeLimitedPart", "Life Limited Part", kind="Bool", default=False),
     a("lifeLimitHours", "Life Limit", kind="Number", unit="FH"),
     a("lifeLimitCycles", "Cycle Limit", kind="Number", unit="FC"),
+    # A life limit in flight hours alone cannot administer a mandatory ALS limit, and the
+    # ones that bite in service are usually calendar: a hose, a seal, a pyrotechnic or a
+    # battery goes out on elapsed time whatever the aeroplane has flown. With only hours,
+    # lifeLimitHours=0 was the whole life statement on a life-limited part, and "when is
+    # this due" had no answer (NI-00000522). The datum matters as much as the number -
+    # a limit measured from manufacture expires in the stores; one measured from
+    # installation does not.
+    a("lifeLimitMonths", "Calendar Life Limit", kind="Number", unit="months"),
+    a("lifeLimitDatum", "Life Limit Measured From",
+      lov=["Date of manufacture", "Date of installation", "Date of overhaul",
+           "Date of first use", "Not applicable"],
+      default="Not applicable"),
+    a("lifeLimitSource", "Life Limit Source",
+      lov=["Airworthiness limitations section (mandatory)",
+           "Certification maintenance requirement", "Manufacturer recommendation",
+           "Supplier component maintenance manual", "Not established"],
+      default="Not established"),
     a("massKg", "Mass", kind="Number", unit="kg"),
     a("massStatus", "Mass Status",
       lov=["Estimated", "Calculated", "Weighed", "Contractual"], default="Estimated"),
@@ -407,6 +424,21 @@ CONCRETE_ITEM_TYPES = [
            a("accessPanelRefs", "Access Panels"),
            a("clearanceRequirementMm", "Minimum Clearance", kind="Number", unit="mm"),
            a("installationManHours", "Installation Time", kind="Number", unit="h"),
+           # A material carries maxServiceTemperature; nothing carried the temperature of
+           # the PLACE it is used, so the limit could never be checked against anything -
+           # a sealant qualified to 120 C in a bay that runs at 180 C would look perfectly
+           # correct in the data (NI-00000535). The bay, not the part, is what has an
+           # environment, which is why this sits on the installation.
+           a("operatingTemperatureMinC", "Operating Temperature - Minimum",
+             kind="Number", unit="C"),
+           a("operatingTemperatureMaxC", "Operating Temperature - Maximum",
+             kind="Number", unit="C"),
+           a("thermalEnvironmentBasis", "Thermal Environment Basis",
+             lov=["Measured in ground test", "Measured in flight test", "Analysis",
+                  "Specification requirement", "Not established"],
+             default="Not established"),
+           a("fluidExposure", "Fluid Exposure"),
+           a("vibrationZone", "Vibration Zone (DO-160G)"),
        ]),
 
     ty("Harness", "Wiring Harness",
@@ -656,6 +688,23 @@ CONCRETE_ITEM_TYPES = [
            a("safetyDataSheetRef", "Safety Data Sheet"),
            a("batchTraceabilityRequired", "Batch Traceability Required", kind="Bool",
              default=True),
+           # The service limits lived only on the linked Material, and the record a
+           # mechanic or a process engineer actually reaches for at the point of
+           # application is this one - so the limit was one hop away from every question
+           # that needed it, and the reporter raised it twice (NI-00000535, NI-00000749).
+           # Holding it here is duplication on purpose: the consumable is a specific
+           # product with its own qualified range, which is not always the whole range of
+           # the material family it belongs to.
+           a("serviceTemperatureMinC", "Service Temperature - Minimum",
+             kind="Number", unit="C"),
+           a("serviceTemperatureMaxC", "Service Temperature - Maximum",
+             kind="Number", unit="C"),
+           a("intermittentTemperatureMaxC", "Intermittent Temperature - Maximum",
+             kind="Number", unit="C"),
+           a("serviceLimitSource", "Service Limit Source",
+             lov=["Manufacturer data sheet", "Governing specification",
+                  "Programme qualification test", "Not established"],
+             default="Not established"),
        ]),
 ]
 
@@ -953,6 +1002,22 @@ CONCRETE_DOC_TYPES = [
              default=False),
            a("characteristicCount", "Characteristics Verified", kind="Number"),
            a("nonconformanceCount", "Nonconformances Found", kind="Number"),
+           # A DELTA first article re-verifies only what the change touched, so "6
+           # characteristics" says nothing about whether the right six were done. AS9102
+           # numbers every characteristic on the ballooned drawing, and the delta's scope
+           # is a list of those numbers - without it the report cannot be audited against
+           # the change that triggered it (NI-00000521).
+           a("deltaScope", "Delta Scope - Characteristics Covered"),
+           a("deltaScopeBasis", "Delta Scope Basis",
+             lov=["Change order affected characteristics", "Supplier change notice",
+                  "Process change", "Tooling change", "Full FAI - not a delta"],
+             default="Full FAI - not a delta"),
+           a("balloonedDrawingRevision", "Ballooned Drawing Revision"),
+           # Who signed it off, which is the field a first article is worthless without -
+           # dispositionAuthority existed on the nonconformance and nothing equivalent
+           # here (NI-00000581).
+           a("faiApprovedBy", "First Article Approved By"),
+           a("faiApprovalDate", "First Article Approval Date", kind="Date"),
            a("serialOrLotNumber", "Serial / Lot Number"),
            a("manufacturingProcessRef", "Manufacturing Process Reference"),
            a("measurementSystemAnalysisRef", "MSA Reference"),
@@ -984,21 +1049,65 @@ CONCRETE_DOC_TYPES = [
              lov=["Receiving inspection", "In-process", "Final inspection",
                   "Assembly", "Ground test", "Flight test", "In service",
                   "Supplier self-disclosure", "Audit"], required=True),
+           # Every value was a production or handling defect, so a condition that
+           # DEVELOPED in service on hardware that conformed when it was built had no
+           # value that fits: the reporter recorded "Material" and explained the truth in
+           # prose (NI-00000729). That matters more than tidiness - `detectedAt` already
+           # offers "In service", so the two fields could not agree, and a fleet-wide
+           # query for corrosion findings returned nothing. In-service deterioration is
+           # also the category that feeds continued airworthiness rather than the
+           # production MRB, so collapsing it into "Material" hides the one class of
+           # nonconformance that can generate an airworthiness directive.
            a("nonconformanceType", "Nonconformance Type",
              lov=["Dimensional", "Material", "Special process", "Documentation",
                   "Handling damage", "Missing operation", "Foreign object debris",
                   "Software", "Wrong configuration fitted",
-                  "Suspect unapproved part"], required=True),
+                  "Suspect unapproved part",
+                  "Corrosion", "Fatigue cracking", "Wear beyond limits",
+                  "Environmental degradation", "Accidental damage in service",
+                  "Measurement system"], required=True),
            a("containmentAction", "Containment Action"),
+           # Eight values, all of them about hardware. A documentation or
+           # measurement-system nonconformance has nothing wrong with the PART, so none of
+           # them could be chosen truthfully and the decision went into free text
+           # (NI-00000538). Note which ones these are: re-inspecting to a corrected record
+           # and voiding measurements taken on an out-of-calibration gauge are the two
+           # dispositions an AS9100 audit asks to see, because they are what you do when
+           # the product is fine and the evidence is not.
+           #
+           # The interim/terminal split is from the same family (NI-00000713): "contained,
+           # not yet dispositioned" is a real and reportable position, and recording it as
+           # "Awaiting disposition" loses the fact that containment has happened.
            a("mrbDisposition", "MRB Disposition",
              lov=["Use as is", "Rework to drawing", "Repair to approved scheme",
                   "Scrap", "Return to supplier", "Deviation - this build only",
-                  "Waiver - already delivered", "Awaiting disposition"],
+                  "Waiver - already delivered",
+                  "Re-inspect to corrected documentation",
+                  "Re-verify with calibrated equipment",
+                  "Void affected measurement records",
+                  "Correct the record - no product impact",
+                  "Contained - interim, pending disposition",
+                  "Awaiting disposition"],
              default="Awaiting disposition"),
+           a("interimDisposition", "Interim Disposition",
+             lov=["None", "Quarantined", "Released under concession",
+                  "Held pending engineering", "Held pending customer"],
+             default="None"),
            a("dispositionAuthority", "Disposition Authority",
              lov=["Material review board", "DOA engineering signatory",
                   "Customer", "Airworthiness authority", "Supplier"],
              default="Material review board"),
+           # Who was in the room, who concurred, and on what basis. dispositionAuthority
+           # named an institution; an audit asks for people and a rationale, and both were
+           # free text or absent (NI-00000581). Airworthiness concurrence is called out
+           # separately because this site's own rule requires it for any disposition other
+           # than scrap or return to supplier.
+           a("mrbMembers", "Material Review Board Members"),
+           a("mrbChair", "Board Chair"),
+           a("dispositionBasis", "Basis for the Disposition"),
+           a("airworthinessConcurrenceBy", "Airworthiness Concurrence By"),
+           a("airworthinessConcurrenceDate", "Airworthiness Concurrence Date",
+             kind="Date"),
            a("repairSchemeRef", "Approved Repair Scheme"),
            a("safetyImpact", "Safety Impact", kind="Bool", default=False),
            a("escapeToCustomer", "Escaped to Customer", kind="Bool", default=False),
@@ -1300,9 +1409,16 @@ CONCRETE_REQ_TYPES = [
 
 MATERIAL_BASE_ATTRS = [
     a("programmeCode", "Programme", lov=PROGRAMMES, default="NX-200"),
+    # The list had no value a two-part paste sealant fits, so both sealant records were
+    # coded "Film adhesive" - a structural bondline material, which is not what a fillet
+    # sealant is, and a materials engineer reading the record would draw the wrong
+    # conclusion about where it may be used (NI-00000690). A closed list that forces a
+    # wrong value is worse than a free-text field, because the wrong value looks
+    # authoritative and is queryable.
     a("materialForm", "Form",
       lov=["Plate", "Sheet", "Bar", "Tube", "Extrusion", "Forging", "Casting",
-           "Prepreg", "Core", "Film adhesive", "Wire"]),
+           "Prepreg", "Core", "Film adhesive", "Paste adhesive", "Sealant",
+           "Potting compound", "Primer", "Coating", "Wire"]),
     # The single most consequential field here. A-basis is the value 99 percent of the
     # population exceeds with 95 percent confidence and is required for a single load
     # path; B-basis is 90/95 and is permitted where failure would transfer load to
@@ -1320,6 +1436,27 @@ MATERIAL_BASE_ATTRS = [
     a("governingSpecification", "Governing Specification"),
     a("procurementSpecification", "Procurement Specification"),
     a("approvedSources", "Approved Sources"),
+    # The supply-chain position of a material, which was free text in `approvedSources`
+    # and in the object notes - so "is this material at risk" could only be answered by
+    # reading prose, one record at a time (NI-00000688). On a certified aeroplane these
+    # are not commercial niceties: a material going obsolete is a certification problem,
+    # because the substitute has to be re-qualified and the substantiation re-run.
+    a("sourceApprovalStatus", "Source Approval Status",
+      lov=["Sole source", "Single source approved", "Dual source approved",
+           "Multiple sources approved", "Source approval pending", "No approved source"],
+      default="Source approval pending"),
+    a("obsolescenceStatus", "Obsolescence Status",
+      lov=["Active", "Last-time-buy announced", "Discontinued - stock held",
+           "Discontinued - no stock", "Substitute qualified"],
+      default="Active"),
+    a("leadTimeWeeks", "Procurement Lead Time", kind="Number", unit="weeks"),
+    # DFARS/AS5553 counterfeit-avoidance posture. A high-risk material bought outside the
+    # franchised chain needs incoming test, which is a quality requirement rather than a
+    # purchasing preference.
+    a("counterfeitRiskLevel", "Counterfeit Risk",
+      lov=["Low - franchised source", "Medium - authorised distributor",
+           "High - open market", "Not assessed"],
+      default="Not assessed"),
     a("nadcapProcessRequired", "NADCAP Accredited Processing Required", kind="Bool",
       default=False),
     a("weldable", "Weldable", kind="Bool", default=False),
@@ -1355,6 +1492,517 @@ CONCRETE_MATERIAL_TYPES = [
        attributes=[]),
 ]
 
-ALL_TYPES = (ABSTRACT_TYPES + [ABSTRACT_MATERIAL_BASE]
+# ─────────────────────────────────────────────────────────────────────────────
+# The records the exercise found nowhere to put
+# ─────────────────────────────────────────────────────────────────────────────
+# Eleven roles, between them, reported the same shape of problem twenty times: a real
+# record of a real decision had nowhere to live, so it survived as prose in a notes field.
+# Prose is not the complaint - unverifiable prose is. A disposition in free text cannot be
+# queried, cannot be counted, cannot be shown to an auditor as a population, and cannot be
+# made to expire.
+#
+# Each type below is one of those records. None of them is speculative: every one was asked
+# for by name, with the question it would answer.
+
+CONCRETE_RECORD_TYPES = [
+    # ── Structural substantiation ────────────────────────────────────────────
+    ty("StructuralSubstantiation", "Structural Substantiation",
+       "The analysis that shows a part or installation meets its strength, fatigue and "
+       "damage-tolerance requirements. The stress role had nowhere to record one at all - "
+       "no stress fields on the item type, no analysis-report type, nothing to reference - "
+       "so the substantiation behind a released part existed only as free text that nobody "
+       "could check (NI-00000577, NI-00000727). Under CS-23 this IS the compliance "
+       "evidence for the structural paragraphs, which makes it the single most "
+       "consequential document a stress engineer produces.",
+       t("TypeDesignDocumentsBase"), numbering=f"{PREFIX}LssSubstantiation",
+       lifecycle=states(TYPE_DESIGN_STATES), actions=[RELEASE_ACTION],
+       attributes=[
+           a("analysisType", "Analysis Type",
+             lov=["Static strength", "Fatigue", "Damage tolerance", "Flutter and aeroelastic",
+                  "Loads", "Thermal", "Mechanism / kinematic", "Crashworthiness",
+                  "Bird strike", "Bonded joint"], required=True),
+           a("analysisMethod", "Method",
+             lov=["Classical hand analysis", "Finite element - linear",
+                  "Finite element - non-linear", "Test substantiation",
+                  "Test correlated analysis", "Comparative / similarity"],
+             required=True),
+           # The three numbers an auditor goes to first. A margin of safety below zero is
+           # a failed substantiation, so holding it as data makes "is anything negative"
+           # a query rather than a reading exercise.
+           a("minimumMarginOfSafety", "Minimum Margin of Safety", kind="Number"),
+           a("criticalLoadCase", "Critical Load Case"),
+           a("criticalLocation", "Critical Location"),
+           a("reserveFactor", "Reserve Factor", kind="Number"),
+           a("allowablesBasisUsed", "Allowables Basis Used",
+             lov=["A-basis", "B-basis", "S-basis", "Test derived", "Typical values only"],
+             required=True, default="A-basis"),
+           a("materialAllowablesSource", "Material Allowables Source"),
+           a("loadsReportRevision", "Loads Report Revision"),
+           a("modelRevision", "Analysis Model Revision"),
+           a("softwareUsed", "Analysis Software and Version"),
+           a("softwareQualified", "Software Qualified for this Use", kind="Bool",
+             default=False),
+           a("inspectionThreshold", "Inspection Threshold", kind="Number", unit="FH"),
+           a("inspectionInterval", "Repeat Inspection Interval", kind="Number", unit="FH"),
+           a("substantiationResult", "Result",
+             lov=["Positive margins throughout", "Positive with inspection requirement",
+                  "Positive with life limit", "Negative margin - redesign required",
+                  "Inconclusive - further work required"],
+             required=True, default="Inconclusive - further work required"),
+           a("checkedBy", "Checked By"),
+           a("independentCheckRequired", "Independent Check Required", kind="Bool",
+             default=True),
+       ]),
+
+    # ── Quality records that were fields on something else ───────────────────
+    ty("Concession", "Concession (Deviation / Waiver)",
+       "Permission to depart from the approved definition, for a stated quantity or serial "
+       "range and with an expiry. It was two values in the nonconformance's disposition "
+       "list - 'Deviation - this build only' and 'Waiver - already delivered' - which "
+       "cannot carry an effectivity, an expiry or a named approver, and conflates two "
+       "different instruments (NI-00000595). A deviation is granted BEFORE manufacture and "
+       "a waiver AFTER, and an open-ended concession is a finding in any audit.",
+       t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssQualityRecord",
+       lifecycle=states(QUALITY_STATES),
+       attributes=[
+           a("concessionType", "Concession Type",
+             lov=["Deviation - before manufacture", "Waiver - after manufacture",
+                  "Production permit", "Customer concession"], required=True),
+           a("departureDescription", "Departure from the Approved Definition",
+             required=True),
+           a("justification", "Technical Justification", required=True),
+           a("quantityAuthorised", "Quantity Authorised", kind="Number"),
+           a("serialRangeFrom", "Serial Range From"),
+           a("serialRangeTo", "Serial Range To"),
+           a("expiryDate", "Expires", kind="Date"),
+           a("expiryCondition", "Expiry Condition",
+             lov=["Date", "Quantity exhausted", "Design change embodied",
+                  "Next revision of the drawing", "No expiry - permanent"],
+             required=True, default="Date"),
+           a("airworthinessImpact", "Airworthiness Impact", kind="Bool", default=False),
+           a("customerApprovalRequired", "Customer Approval Required", kind="Bool",
+             default=False),
+           a("approvedBy", "Approved By"),
+           a("approvalDate", "Approval Date", kind="Date"),
+           a("permanentFixRef", "Permanent Corrective Action"),
+       ]),
+
+    ty("CorrectiveAction", "Corrective Action",
+       "The AS9100D corrective action behind a nonconformance: root cause, the action, who "
+       "owns it, when it is due and how its effectiveness was verified. It was a single "
+       "free-text reference on the nonconformance - `correctiveActionRef` - so a "
+       "nonconformance could be dispositioned and closed with its corrective action "
+       "pointing at nothing, and nothing anywhere said whether the action had worked "
+       "(NI-00000570). Effectiveness verification is the step that distinguishes a "
+       "corrective action from an intention.",
+       t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssQualityRecord",
+       lifecycle=states(QUALITY_STATES),
+       attributes=[
+           a("problemStatement", "Problem Statement", required=True),
+           a("rootCauseMethod", "Root Cause Method",
+             lov=["5 Why", "Ishikawa / fishbone", "Fault tree", "8D",
+                  "Design of experiments", "Not yet determined"],
+             required=True, default="Not yet determined"),
+           a("rootCause", "Root Cause"),
+           a("containmentAction", "Immediate Containment"),
+           a("correctiveAction", "Corrective Action"),
+           a("preventiveAction", "Preventive Action - Systemic"),
+           a("actionOwner", "Action Owner", required=True),
+           a("dueDate", "Due", kind="Date"),
+           a("closureDate", "Closed", kind="Date"),
+           a("effectivenessVerificationMethod", "Effectiveness Verified By",
+             lov=["Audit", "Statistical process control", "Re-inspection of n units",
+                  "Process capability study", "Elapsed time with no recurrence",
+                  "Not yet verified"], required=True, default="Not yet verified"),
+           a("effectivenessVerified", "Effectiveness Confirmed", kind="Bool",
+             default=False),
+           a("effectivenessVerifiedBy", "Verified By"),
+           a("recurrenceAfterClosure", "Recurred After Closure", kind="Bool",
+             default=False),
+           a("systemicScope", "Systemic Scope",
+             lov=["This part only", "This part family", "This process",
+                  "This supplier", "Site-wide"], required=True, default="This part only"),
+       ]),
+
+    ty("InspectionRecord", "Inspection Record",
+       "What was measured, on which unit, against which characteristic, with what gauge. A "
+       "nonconformance could only scope itself with free-text log-number ranges, so "
+       "'which units did we actually check' had no answer - and a measurement with no "
+       "named gauge cannot be voided when that gauge is found out of calibration, which is "
+       "precisely when you need to find every measurement it took (NI-00000531, "
+       "NI-00000583).",
+       t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssQualityRecord",
+       lifecycle=states(QUALITY_STATES),
+       attributes=[
+           a("inspectionType", "Inspection Type",
+             lov=["Receiving", "First article", "In-process", "Final",
+                  "Source inspection at supplier", "Scheduled maintenance",
+                  "Unscheduled - in service", "Special - after event"], required=True),
+           a("characteristicNumber", "Characteristic / Balloon Number"),
+           a("characteristicDescription", "Characteristic"),
+           a("nominalValue", "Nominal", kind="Number"),
+           a("toleranceUpper", "Upper Tolerance", kind="Number"),
+           a("toleranceLower", "Lower Tolerance", kind="Number"),
+           a("measuredValue", "Measured", kind="Number"),
+           a("unitOfMeasure", "Unit"),
+           a("withinTolerance", "Within Tolerance", kind="Bool", default=True),
+           a("gaugeIdentifier", "Gauge / Equipment Identifier"),
+           a("gaugeCalibrationDueDate", "Gauge Calibration Due", kind="Date"),
+           a("measurementUncertainty", "Measurement Uncertainty", kind="Number"),
+           a("inspectedBy", "Inspected By"),
+           a("inspectionDate", "Inspected On", kind="Date"),
+           # For a trend. A measured corrosion depth means little on its own and a great
+           # deal plotted against the hours the airframe had flown when it was taken.
+           a("airframeHoursAtInspection", "Airframe Hours at Inspection",
+             kind="Number", unit="FH"),
+           a("airframeCyclesAtInspection", "Airframe Cycles at Inspection",
+             kind="Number", unit="FC"),
+       ]),
+
+    # ── The physical article, as distinct from its definition ────────────────
+    ty("SerialisedUnit", "Serialised Unit (As-Built)",
+       "One physical article, by serial number, and the definition it was actually built "
+       "to. Everything downstream of delivery needs this and nothing had it: "
+       "`affectedSerialNumbers` was free text, so a nonconformance could not be scoped to "
+       "real units, a deviation for product in the factory could not be raised because "
+       "nothing said what was in the factory, and a life limit could not be accumulated "
+       "against the unit that flew the hours (NI-00000710, NI-00000522, NI-00000713). The "
+       "part tells you what it should be; this tells you what it is.",
+       t("NonTypeDesignItemBase"), numbering=f"{PREFIX}LssSerialisedUnit",
+       lifecycle=states(SUPPORT_STATES),
+       attributes=[
+           a("serialNumber", "Serial Number", required=True),
+           a("builtToRevision", "Built to Revision", required=True),
+           a("manufactureDate", "Manufactured", kind="Date"),
+           a("manufacturingLot", "Lot / Batch"),
+           a("manufacturedBy", "Manufactured By"),
+           a("unitStatus", "Unit Status",
+             lov=["In manufacture", "In stores", "Installed", "Removed - serviceable",
+                  "Removed - unserviceable", "In repair", "Quarantined", "Scrapped"],
+             required=True, default="In manufacture"),
+           a("hoursSinceNew", "Hours Since New", kind="Number", unit="FH"),
+           a("cyclesSinceNew", "Cycles Since New", kind="Number", unit="FC"),
+           a("hoursSinceOverhaul", "Hours Since Overhaul", kind="Number", unit="FH"),
+           a("installationDate", "Installed On", kind="Date"),
+           a("removalDate", "Removed On", kind="Date"),
+           # The computed answer the fleet role asked for. Holding it as data rather than
+           # deriving it on read is deliberate: the due date has to survive the part
+           # definition being revised, because the unit was built to the old one.
+           a("nextDueDate", "Next Due", kind="Date"),
+           a("nextDueHours", "Next Due at Hours", kind="Number", unit="FH"),
+           a("lifeRemainingHours", "Life Remaining", kind="Number", unit="FH"),
+           a("concessionsApplied", "Concessions Applied"),
+       ]),
+
+    # ── Continued airworthiness ──────────────────────────────────────────────
+    ty("InServiceOccurrence", "In-Service Occurrence",
+       "Something that happened to a delivered aeroplane. The fleet role could record an "
+       "occurrence only in a notes field, against an `affectedItem` that was one "
+       "free-text string, with no link to the airframe it happened on - so nothing could "
+       "be counted per tail number or trended at all (NI-00000578, NI-00000583). This is "
+       "also the reporting obligation: an occurrence meeting the reportable criteria has a "
+       "statutory clock on it, and a record with no date and no airframe cannot evidence "
+       "that the clock was met.",
+       t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssInServiceRecord",
+       lifecycle=states(QUALITY_STATES),
+       attributes=[
+           a("occurrenceType", "Occurrence Type",
+             lov=["Pilot report", "Maintenance finding", "Component failure",
+                  "System malfunction", "Structural finding", "Incident",
+                  "Accident", "Ground damage", "Operational interruption"],
+             required=True),
+           a("occurrenceDate", "Occurred On", kind="Date", required=True),
+           a("flightPhase", "Flight Phase",
+             lov=["Ground", "Taxi", "Take-off", "Climb", "Cruise", "Descent",
+                  "Approach", "Landing", "Not applicable"], default="Not applicable"),
+           a("occurrenceDescription", "What Happened", required=True),
+           a("operatorReference", "Operator's Reference"),
+           a("airframeHoursAtOccurrence", "Airframe Hours", kind="Number", unit="FH"),
+           a("airframeCyclesAtOccurrence", "Airframe Cycles", kind="Number", unit="FC"),
+           a("operationalEffect", "Operational Effect",
+             lov=["None", "Deferred defect", "Delay", "Cancellation",
+                  "Air turnback", "Diversion", "Aircraft on ground"],
+             default="None"),
+           a("safetyEffect", "Safety Effect (ARP4761A)", lov=FAILURE_EFFECT),
+           a("reportableToAuthority", "Reportable to the Authority", kind="Bool",
+             default=False),
+           a("reportedToAuthorityDate", "Reported On", kind="Date"),
+           a("authorityReference", "Authority Reference"),
+           a("fleetWideRisk", "Fleet-Wide Risk Assessed", kind="Bool", default=False),
+           a("immediateAction", "Immediate Action Taken"),
+       ]),
+
+    ty("OperatorComplianceRecord", "Operator Compliance Record",
+       "An operator's return confirming a service bulletin has been embodied on a given "
+       "airframe. On a Mandatory bulletin facing a proposed airworthiness directive there "
+       "was no way to record compliance at all, so the one question the regulator asks - "
+       "how much of the fleet has complied - could not be answered (NI-00000558). "
+       "`openBulletins` on the aircraft was the only trace and it is a free-text count.",
+       t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssInServiceRecord",
+       lifecycle=states(QUALITY_STATES),
+       attributes=[
+           a("bulletinReference", "Service Bulletin", required=True),
+           a("complianceStatus", "Compliance Status",
+             lov=["Not yet due", "Due", "Overdue", "Embodied", "Not applicable",
+                  "Alternative means approved", "Extension granted"],
+             required=True, default="Not yet due"),
+           a("complianceDueDate", "Compliance Due", kind="Date"),
+           a("complianceDueHours", "Compliance Due at Hours", kind="Number", unit="FH"),
+           a("embodimentDate", "Embodied On", kind="Date"),
+           a("embodiedBy", "Embodied By (Organisation)"),
+           a("embodimentHours", "Airframe Hours at Embodiment", kind="Number", unit="FH"),
+           a("partsFittedRevision", "Part Revision Fitted"),
+           a("operatorName", "Operator", required=True),
+           a("alternativeMeansReference", "Alternative Means of Compliance Reference"),
+           a("evidenceReference", "Evidence of Embodiment"),
+       ]),
+
+    # ── Publications: the end of the line for a limitation ───────────────────
+    ty("AirworthinessLimitation", "Airworthiness Limitation",
+       "A limitation that has to reach the people operating and maintaining the aeroplane: "
+       "an ALS item, a certification maintenance requirement, a flight manual limitation. "
+       "A substantiation that is positive only WITH an inspection, and a compliance "
+       "demonstration accepted only with a limitation, both end here - and there was no "
+       "publication object of any kind, so a limitation could be agreed with the authority "
+       "and never reach a crew (NI-00000532, NI-00000576).",
+       t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssPublication",
+       lifecycle=states(PUBLICATION_STATES),
+       attributes=[
+           a("limitationKind", "Limitation Kind",
+             lov=["Airworthiness limitation (ALS - mandatory)",
+                  "Certification maintenance requirement",
+                  "Flight manual limitation", "Operating limitation",
+                  "Mandatory replacement time", "Mandatory inspection",
+                  "Critical design configuration control limitation"],
+             required=True),
+           a("limitationText", "Limitation as Published", required=True),
+           a("mandatory", "Mandatory", kind="Bool", default=True),
+           a("thresholdHours", "Threshold", kind="Number", unit="FH"),
+           a("repeatIntervalHours", "Repeat Interval", kind="Number", unit="FH"),
+           a("thresholdMonths", "Calendar Threshold", kind="Number", unit="months"),
+           a("appliesToAtaChapter", "ATA Chapter", lov=ATA_CHAPTERS_IN_SCOPE),
+           a("derivedFrom", "Derived From",
+             lov=["Damage tolerance analysis", "Fatigue analysis", "Safety assessment",
+                  "Test result", "Authority finding", "Service experience"],
+             required=True),
+           a("publishedIn", "Published In",
+             lov=["Airworthiness limitations section", "Aircraft flight manual",
+                  "AFM supplement", "Maintenance programme",
+                  "Instructions for continued airworthiness", "Not yet published"],
+             required=True, default="Not yet published"),
+           a("authorityAgreementReference", "Authority Agreement Reference"),
+           a("effectiveFrom", "Effective From", kind="Date"),
+       ]),
+
+    ty("MaintenanceTask", "Maintenance Task",
+       "One scheduled task in the maintenance programme: what to do, at what interval, to "
+       "what zone, and where the instruction lives. 'What does the 400 hour inspection "
+       "say' could not be answered because nothing in the system held the maintenance "
+       "programme at all (NI-00000533).",
+       t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssPublication",
+       lifecycle=states(PUBLICATION_STATES),
+       attributes=[
+           a("taskCode", "Task Code", required=True),
+           a("taskDescription", "Task", required=True),
+           a("taskType", "Task Type",
+             lov=["General visual inspection", "Detailed inspection",
+                  "Special detailed inspection", "Functional check",
+                  "Operational check", "Restoration", "Discard",
+                  "Lubrication / servicing"], required=True),
+           a("intervalHours", "Interval", kind="Number", unit="FH"),
+           a("intervalCycles", "Interval", kind="Number", unit="FC"),
+           a("intervalMonths", "Interval", kind="Number", unit="months"),
+           a("thresholdHours", "First Due At", kind="Number", unit="FH"),
+           a("ataChapter", "ATA Chapter", lov=ATA_CHAPTERS_IN_SCOPE),
+           a("zone", "Zone"),
+           a("accessRequired", "Access Required"),
+           a("estimatedManHours", "Estimated Labour", kind="Number", unit="h"),
+           a("taskSource", "Task Source",
+             lov=["Airworthiness limitations section", "Certification maintenance requirement",
+                  "Maintenance review board", "Manufacturer recommendation",
+                  "Supplier component maintenance manual", "Operator request"],
+             required=True),
+           a("mandatoryTask", "Mandatory", kind="Bool", default=False),
+           a("instructionReference", "Instruction Reference"),
+       ]),
+
+    # ── The authority's own output ───────────────────────────────────────────
+    ty("CertificationFinding", "Certification Finding",
+       "A finding, observation or condition raised by the authority or by a delegated "
+       "representative against submitted data. There was no way to record one, which left "
+       "the DER with no writable surface for the single act her delegation exists to "
+       "perform, and left a 'compliant with limitation' position resting on a requirement "
+       "that did not exist (NI-00000576, NI-00000760, NI-00000555). A finding has to "
+       "outlive the item it was raised against, which is why it is a record and not a "
+       "field.",
+       t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssCertificationFinding",
+       lifecycle=states(QUALITY_STATES),
+       attributes=[
+           a("findingClass", "Finding Class",
+             lov=["Level 1 finding - airworthiness significant",
+                  "Level 2 finding", "Observation", "Comment",
+                  "Condition on acceptance", "Published limitation",
+                  "Certification review item"], required=True),
+           a("raisedBy", "Raised By", required=True),
+           a("raisingAuthority", "Raising Authority",
+             lov=["EASA", "FAA", "Designated engineering representative",
+                  "Design organisation internal audit", "Other authority"],
+             required=True),
+           a("findingText", "Finding", required=True),
+           a("regulatoryReference", "Regulatory Reference"),
+           a("raisedOn", "Raised On", kind="Date", required=True),
+           a("responseDueDate", "Response Due", kind="Date"),
+           a("applicantResponse", "Applicant's Response"),
+           a("closureBasis", "Basis for Closure"),
+           a("closedBy", "Closed By"),
+           a("closedOn", "Closed On", kind="Date"),
+           a("blocksCertification", "Blocks Certification", kind="Bool", default=False),
+           # The outcome that NI-00000574 asked for: a credit that has been withdrawn has
+           # to be visible AS withdrawn, not merely absent.
+           a("creditAffected", "Effect on Certification Credit",
+             lov=["None", "Credit conditional on a limitation",
+                  "Credit withdrawn - re-substantiation required",
+                  "Credit withdrawn - re-test required", "Not yet assessed"],
+             required=True, default="Not yet assessed"),
+       ]),
+]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Reference kinds
+# ─────────────────────────────────────────────────────────────────────────────
+# A reference kind in this platform is a TYPE, not an enum: ObjectReferenceLinkService
+# discovers every non-abstract descendant of `ReferenceLinkBase` from the registry, so a
+# kind declared here appears in GET .../references/kinds with no code change. That is a
+# good design and this customization had not used it, which is why six roles independently
+# reported that every relationship they needed had to be recorded as "Related" with the
+# truth in a free-text note.
+#
+# The six out-of-the-box kinds - Audit Of, Drawing, Markup Of, Related, Specification,
+# Supersedes - are a document-management vocabulary. None of them can say "this
+# nonconformance is raised against that part", "this report is the evidence for that
+# compliance demonstration" or "this specification governs the application of that
+# sealant", and those are the sentences a certification trail is made of. Recording them
+# all as "Related" is not merely untidy: a traceability walk cannot tell a hop that carries
+# obligation from a hop that is a passing mention, so the walk is unusable as evidence -
+# which is the whole point of NI-00000486, NI-00000569 and NI-00000712.
+#
+# Each kind below is one such sentence, in the direction a person would say it.
+
+REFERENCE_KIND_ATTRS = [
+    # Why the link exists, on the link. A reviewer asking "why does this evidence count"
+    # should not have to open both ends and guess.
+    a("linkRationale", "Rationale", scope="Revision"),
+    # The suspect mechanism several roles asked for (NI-00000525, NI-00000712). A link is
+    # suspect when one end has moved on since it was reviewed; nothing computes that today,
+    # but it cannot even be RECORDED without somewhere to put it, and a review identity is
+    # what makes "we looked at this" different from "nobody has looked".
+    a("reviewStatus", "Review Status",
+      lov=["Not reviewed", "Reviewed - current", "Suspect - target revised",
+           "Suspect - source revised", "Suspect - manually flagged",
+           "Re-reviewed - still valid", "Superseded"],
+      default="Not reviewed"),
+    a("reviewedBy", "Reviewed By"),
+    a("reviewedOn", "Reviewed On", kind="Date"),
+    a("reviewedAgainstRevision", "Reviewed Against Revision"),
+]
+
+ABSTRACT_REFERENCE_BASE = ty(
+    "ReferenceBase", "Light Speed Systems Reference Base",
+    "Abstract base for the NX-200 programme's own reference kinds. Sits between the "
+    "out-of-the-box ReferenceLinkBase - which holds the endpoints and the revision rule - "
+    "and the concrete kinds, so the review and suspect fields every aviation reference "
+    "needs are declared once rather than on each kind. No concrete type derives straight "
+    "off an out-of-the-box base anywhere in this model, and a reference kind is no "
+    "exception.",
+    "ReferenceLinkBase", abstract=True, attributes=REFERENCE_KIND_ATTRS)
+
+CONCRETE_REFERENCE_TYPES = [
+    ty("AffectedItemOfLink", "Affected Item",
+       "The source record is raised AGAINST the target item: a nonconformance against the "
+       "part found nonconforming, an inspection finding against the item inspected. The "
+       "distinction from 'Related' is obligation - an affected item has to be dispositioned "
+       "before the record can close, and until this kind existed that fact lived in a note "
+       "(NI-00000708).",
+       t("ReferenceBase")),
+
+    ty("AffectedUnitOfLink", "Affected Unit",
+       "The source record applies to one serialised unit or airframe rather than to the "
+       "part in general. A disposition can differ per airframe - use-as-is on one, rework "
+       "on another - and one mrbDisposition value for a whole record cannot say that "
+       "(NI-00000713, NI-00000710).",
+       t("ReferenceBase")),
+
+    ty("EvidenceForLink", "Evidence For",
+       "The source is evidence offered in support of the target compliance demonstration: "
+       "a test report, an analysis, an inspection record. Evidence was cited as free text, "
+       "so 14 of 23 compliance items named documents that do not exist and 8 of those were "
+       "already Accepted - an evidence reference that cannot be resolved is not evidence "
+       "(NI-00000569).",
+       t("ReferenceBase")),
+
+    ty("DemonstratesComplianceOfLink", "Demonstrates Compliance Of",
+       "The source compliance demonstration covers the target configuration - the item, "
+       "installation or system whose compliance it shows. Without it a compliance item "
+       "floated free of the aeroplane: nothing could answer 'which demonstrations does "
+       "revising this part invalidate', which is the question a change board asks first "
+       "(NI-00000564, NI-00000730).",
+       t("ReferenceBase")),
+
+    ty("TestedConfigurationLink", "Tested Configuration",
+       "The target is the exact item revision the source test was run on. A test report "
+       "that cannot name its configuration as data cannot have its credit checked when the "
+       "configuration changes, which is how a withdrawn credit goes unnoticed "
+       "(NI-00000524).",
+       t("ReferenceBase")),
+
+    ty("GovernsApplicationOfLink", "Governs Application Of",
+       "The source process specification controls how the target material or consumable is "
+       "applied - cure, surface preparation, out-time, cleanliness. Revising the "
+       "consumable should flag the specifications that govern it, and nothing connected the "
+       "two (NI-00000523).",
+       t("ReferenceBase")),
+
+    ty("FirstArticleOfLink", "First Article Of",
+       "The source first article inspection report is the first article for the target part "
+       "revision. The FAI referenced its part by free text, so 'has this part had its "
+       "first article' could not be answered from the data (NI-00000534).",
+       t("ReferenceBase")),
+
+    ty("EmbodiedByLink", "Embodied By",
+       "The target part revision is what the source service bulletin instructs an operator "
+       "to fit. A bulletin linked to nothing: no change notice, no modified part, no "
+       "originating problem report, so its whole traceability was unvalidated strings "
+       "(NI-00000566).",
+       t("ReferenceBase")),
+
+    ty("SubstantiatedByLink", "Substantiated By",
+       "The target structural substantiation shows that the source item meets its strength, "
+       "fatigue and damage-tolerance requirements. A substantiation that cannot be pointed "
+       "at from the part it substantiates is unverifiable free text (NI-00000577).",
+       t("ReferenceBase")),
+
+    ty("FittedToLink", "Fitted To",
+       "The source serialised unit is installed on the target airframe. This is what makes "
+       "a life limit administrable: without it a fitted unit's hours cannot be accumulated "
+       "against the airframe that flew them (NI-00000522).",
+       t("ReferenceBase")),
+
+    ty("OccurrenceOnLink", "Occurrence On",
+       "The source in-service occurrence or finding was observed on the target airframe. "
+       "Effectivity was a free-text field and occurrences were not recorded per airframe at "
+       "all, so nothing could be trended against a tail number (NI-00000578, NI-00000583).",
+       t("ReferenceBase")),
+
+    ty("RegulatoryBasisLink", "Regulatory Basis",
+       "The target certification requirement is the regulatory basis the source item is "
+       "designed to. A part's paragraph was free text with no link to the requirement, so a "
+       "paragraph that had fallen outside the certification basis went undetected "
+       "(NI-00000730).",
+       t("ReferenceBase")),
+]
+
+ALL_TYPES = (ABSTRACT_TYPES + [ABSTRACT_MATERIAL_BASE, ABSTRACT_REFERENCE_BASE]
              + CONCRETE_ITEM_TYPES + CONCRETE_DOC_TYPES
-             + CONCRETE_REQ_TYPES + CONCRETE_MATERIAL_TYPES)
+             + CONCRETE_REQ_TYPES + CONCRETE_MATERIAL_TYPES
+             + CONCRETE_RECORD_TYPES + CONCRETE_REFERENCE_TYPES)
