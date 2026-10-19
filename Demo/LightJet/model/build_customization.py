@@ -624,6 +624,22 @@ def transition_rules(state_names: list[str], owner_group: str | None) -> list[di
             if gate_index >= 0 and state_names[gate_index] == state:
                 allow(state, approved, signatory)
 
+        # At the gate itself, the signatory and the authority may also RETURN the submission
+        # with a finding, not only accept it or send it back for more work.
+        #
+        # From a state awaiting a decision there were exactly two routes: forward to the
+        # approved state, and back a step for rework. So the one thing a certification
+        # reviewer most needs to do at the point of acceptance - object, on the record - had
+        # nowhere to land: "accept" was available and "return with a finding" was not, and
+        # sending the item back to Evidence in Work says "do more work" rather than "the
+        # authority has an objection of record" (NI-00000557).
+        #
+        # This is the same act, and the same reasoning, as the finding against an ALREADY
+        # accepted demonstration a few lines above. Objecting before signing should not be
+        # harder than objecting afterwards.
+        if state in AWAITING_DECISION and FINDING_STATE in state_names:
+            allow(state, FINDING_STATE, f"{signatory}, group:{AUTHORITY_GROUP}")
+
         # Retiring something that was never approved is still a signatory act, and there
         # was no route for it at all: the working branch skipped a retired neighbour as
         # "handled below, signatory only" and the handling below only ever covered the

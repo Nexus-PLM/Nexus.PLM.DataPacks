@@ -521,6 +521,28 @@ def test_every_reference_kind_can_record_whether_it_was_reviewed():
         assert needed in declared, f"reference kinds cannot record {needed}"
 
 
+def test_a_submission_can_be_returned_with_a_finding_not_only_accepted():
+    """From a state awaiting a decision there were exactly two routes: forward to the
+    approved state, and back a step for rework. So the one thing a certification reviewer
+    most needs to do at the point of acceptance - object, on the record - had nowhere to
+    land. "Accept" was available and "return with a finding" was not, and sending the item
+    back to Evidence in Work says "do more work" rather than "the authority has an
+    objection of record" (NI-00000557).
+
+    The same act, and the same reasoning, as the finding against an already accepted
+    demonstration: objecting BEFORE signing should not be harder than objecting after."""
+    for label, stem, states, model in models():
+        gates = B.AWAITING_DECISION & set(states)
+        if not gates or B.FINDING_STATE not in states:
+            continue
+        rules = {(r["fromState"], r["toState"]): r["allowedRoles"]
+                 for r in B.transition_rules(states, B.OWNING_GROUP.get(stem))}
+        for gate in gates:
+            who = rules.get((gate, B.FINDING_STATE))
+            assert who,                 f"{label}/{stem}: {gate} can be accepted but not returned with a finding"
+            assert B.AUTHORITY_GROUP in who,                 f"{label}/{stem}: the authority cannot raise a finding from {gate}"
+
+
 def main() -> int:
     tests = [(name, obj) for name, obj in sorted(globals().items())
              if name.startswith("test_") and callable(obj)]
