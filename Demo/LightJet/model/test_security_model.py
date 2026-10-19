@@ -138,14 +138,59 @@ def test_every_group_can_reach_at_least_one_project():
 # What the rows grant
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_no_row_anywhere_grants_create():
-    """The first `canCreate: true` on a site turns creation into an allowlist for EVERY
-    type at once, so one well-meant grant takes create away from every role that has no
-    row. The model has always said this; nothing enforced it."""
+def test_create_is_granted_to_somebody_on_every_type():
+    """A policy that grants create to nobody now means nobody but an administrator may
+    create one, so a type whose rows are all false is a type the demo cannot author.
+
+    This invariant is the inverse of the one it replaces. `canCreate` used to be false on
+    every row of every type on purpose, because the Engine read "no row grants create" as
+    "create is unconfigured, so anyone may" - so the safe-looking configuration was the one
+    that granted creation to the entire site, and a project manager in no engineering group
+    could author type design data (NI-00000742, NI-00000699, NI-00000643, NI-00000691).
+    With a configured policy now answering the question, all-false denies everyone."""
+    for label, stem, _states, model in models():
+        granted = {subject(row) for row in model["statePermissions"] if row["canCreate"]}
+        assert granted, f"{label}/{stem}: no row grants create, so nobody may author one"
+
+
+def test_create_is_never_granted_to_the_wildcard():
+    """Create by account type alone was the finding: a supply-chain user could create type
+    design data because every account type matched the wildcard row (NI-00000691). Create
+    belongs to the groups that author the type, so the wildcard must never carry it."""
     for label, stem, _states, model in models():
         for row in model["statePermissions"]:
-            assert row["canCreate"] is False, \
-                f"{label}/{stem}: {subject(row)} grants create in {row['stateName']}"
+            if row["subjectType"] == "*":
+                assert row["canCreate"] is False, \
+                    f"{label}/{stem}: the wildcard grants create in {row['stateName']}"
+
+
+def test_create_is_granted_only_to_groups_that_may_edit_the_type():
+    """Whoever may create one must be able to work on it afterwards, or the create leaves
+    an object its author cannot touch - and an author who cannot edit is how
+    "a user can create an object and then cannot delete it" happens (NI-00000683).
+
+    An administrator is exempt: the role carries edit Any in every state anyway."""
+    for label, stem, _states, model in models():
+        editors = {subject(row) for row in model["statePermissions"]
+                   if row["editScope"] in ("Own", "Any")}
+        for row in model["statePermissions"]:
+            if not row["canCreate"] or row["subjectType"] == "role":
+                continue
+            assert subject(row) in editors, \
+                f"{label}/{stem}: {subject(row)} may create one but may never edit it"
+
+
+def test_create_is_consistent_across_the_states_of_a_type():
+    """Create is asked before any object exists, so no state can qualify it. A subject
+    granted create in one state and refused it in another is a policy that cannot be read:
+    the Engine takes the first grant it finds, so the quiet row is the one that is wrong."""
+    for label, stem, _states, model in models():
+        answers: dict[str, set[bool]] = {}
+        for row in model["statePermissions"]:
+            answers.setdefault(subject(row), set()).add(bool(row["canCreate"]))
+        for who, values in answers.items():
+            assert len(values) == 1, \
+                f"{label}/{stem}: {who} both may and may not create, depending on the state"
 
 
 def test_a_locked_state_grants_edit_to_nobody_but_admin_and_a_finding():
@@ -220,7 +265,13 @@ def test_the_delegated_authority_can_read_its_scope_and_write_only_a_finding():
             row = rows[0]
             assert row["canRead"] and row["canDownload"], \
                 f"{stem}/{state}: the authority cannot read the evidence it judges"
-            expected = "Any" if state == B.FINDING_STATE else "None"
+            # On the one type the authority RAISES, it is the author and edits in a working
+            # state like any owning group. On everything else in its delegation it approves
+            # data rather than editing it, and writes only where a finding re-opens the item.
+            if stem in B.AUTHORITY_RAISES:
+                expected = "None" if state in B.RELEASE_LOCKED else "Any"
+            else:
+                expected = "Any" if state == B.FINDING_STATE else "None"
             assert row["editScope"] == expected, \
                 f"{stem}/{state}: the authority's edit is {row['editScope']}, " \
                 f"expected {expected}"
