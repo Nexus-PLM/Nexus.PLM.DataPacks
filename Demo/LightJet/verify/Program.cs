@@ -78,13 +78,33 @@ if (package is not null)
         }
     }
 
+    // Until Services PR #798 this loop warned that ANY canCreate:true "flips creation to an
+    // allowlist site-wide", because CanCreateAsync treated the right as opt-in: with no row
+    // granting it, everyone had it. That read a policy backwards - a model denying create to
+    // every subject of every type, as this one did, granted it to the whole site - and it is
+    // now fixed, so the warning asserted the opposite of the truth and read as a reason to
+    // abort the import.
+    //
+    // The useful check is the inverse. Create is deny-by-default for a type that carries a
+    // security model at all, so a model with no granting row names nobody who may author that
+    // type, and nobody but an administrator can. That is not a cautious default, it is a type
+    // no role can use.
     foreach (var entry in m.Entries.Where(e => e.Kind == PackageEntryKinds.Security))
     {
         using var doc = JsonDocument.Parse(package.Files[entry.Path]);
-        foreach (var row in doc.RootElement.GetProperty("statePermissions").EnumerateArray())
+        var rows = doc.RootElement.GetProperty("statePermissions").EnumerateArray().ToList();
+
+        static bool Grants(JsonElement row) =>
+            row.TryGetProperty("canCreate", out var cc) && cc.GetBoolean();
+
+        if (!rows.Any(Grants))
+            problems.Add($"{entry.Key}: no row grants canCreate, so only an administrator can create one.");
+
+        foreach (var row in rows.Where(Grants))
         {
-            if (row.TryGetProperty("canCreate", out var cc) && cc.GetBoolean())
-                problems.Add($"{entry.Key}: canCreate is true, which flips creation to an allowlist site-wide.");
+            var subjectType = row.TryGetProperty("subjectType", out var st) ? st.GetString() : null;
+            if (subjectType == "*")
+                problems.Add($"{entry.Key}: the wildcard row grants canCreate, so every signed-in user may create one.");
         }
     }
 
