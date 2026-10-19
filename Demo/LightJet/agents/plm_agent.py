@@ -40,11 +40,46 @@ ENGINE = os.environ.get("NEXUS_ENGINE", "https://192.168.1.47:5000")
 VAULT = os.environ.get("NEXUS_VAULT", "https://192.168.1.47:5200")
 PASSWORD = os.environ.get("NEXUS_DEMO_PASSWORD", "Nexus2025!")
 
+# The administrator is a different matter from the nine demo logins: it can change the
+# type model and every object on the site, so its password is never written down here.
+# NEXUS_ADMIN_PASSWORD, or `admin_agent()` asks for it.
+ADMIN_USERNAME = os.environ.get("NEXUS_ADMIN_USERNAME", "admin")
+
 HERE = Path(__file__).parent
 BUG_LOG = Path(os.environ.get("NEXUS_BUG_LOG", HERE / "reports" / "bugs.jsonl"))
 ACTIVITY_LOG = Path(os.environ.get("NEXUS_ACTIVITY_LOG",
                                    HERE / "reports" / "activity.jsonl"))
 _LOCK = threading.Lock()
+
+
+# How long a discussion message may be. A chat message is a few sentences; the first run
+# of this scenario averaged five thousand characters a message and the longest was over
+# twenty thousand, which is a document posted into a conversation.
+MESSAGE_LIMIT = 900
+
+# A signed position - a disposition, a DER decision, a refusal somebody will be held to -
+# earns more room. Still capped: beyond this it belongs on the object as a finding or a
+# note, where it can be navigated to and where it survives the thread.
+FORMAL_MESSAGE_LIMIT = 2500
+
+
+def admin_agent(role: str = "PLM Administrator") -> "Agent":
+    """The administrator, whose password comes from the environment or from a prompt.
+
+    Dataset maintenance - transferring ownership, clearing a stale reference, re-deriving
+    a calculated value - is done as the administrator because most of this dataset is
+    Released and correctly refuses an engineer's edit. That is the same act as loading it,
+    not a role doing its job, so it is deliberately a little awkward: nothing in this
+    repository stores the password, and a script that wants it has to be run by somebody
+    who has it.
+    """
+    secret = os.environ.get("NEXUS_ADMIN_PASSWORD")
+    if not secret:
+        import getpass
+        secret = getpass.getpass(f"{ADMIN_USERNAME} password: ")
+    if not secret:
+        raise SystemExit("No administrator password. Set NEXUS_ADMIN_PASSWORD and re-run.")
+    return Agent(ADMIN_USERNAME, password=secret, role=role)
 
 
 class Refused(Exception):
@@ -126,7 +161,10 @@ class Agent:
         No agent calls this during the scenario: the roles report what they cannot do
         rather than tidying the dataset, and a delete they were refused is a finding.
         It exists so a check that has to CREATE something in order to prove creating
-        works can remove it again - see verify_wave4_live.py --create-probe.
+        works can remove it again - see verify_wave4_live.py --create-probe - and for
+        the administrator's own dataset maintenance, where removing a stale record IS
+        the task: dedupe_material_links.py clears the duplicate way this dataset used
+        to say "made from".
         """
         return self._call("DELETE", path, **kw)
 
@@ -257,7 +295,7 @@ class Agent:
         return self.get("/api/discussions") or []
 
     def start_thread(self, subject, first_message, participants=None,
-                     linked_part_numbers=None):
+                     linked_part_numbers=None, formal=False):
         """Open a discussion thread and post the opening message."""
         existing = next((t for t in self.threads() if t.get("subject") == subject), None)
         if existing:
@@ -270,21 +308,57 @@ class Agent:
                 "linkedObjectIds": [object_id(p) for p in (linked_part_numbers or [])],
             })
             thread_id = created["id"] if isinstance(created, dict) else created
-        self.say_in(thread_id, first_message)
+        self.say_in(thread_id, first_message, formal=formal)
         self.log("start_thread", f"{subject}")
         return thread_id
 
-    def say(self, subject, text, participants=None, linked_part_numbers=None):
+    def say(self, subject, text, participants=None, linked_part_numbers=None,
+            formal=False):
         """Post to a thread by subject, opening it if nobody has yet."""
         thread = next((t for t in self.threads() if t.get("subject") == subject), None)
         if thread is None:
-            return self.start_thread(subject, text, participants, linked_part_numbers)
-        self.say_in(thread["id"], text)
+            return self.start_thread(subject, text, participants, linked_part_numbers,
+                                     formal=formal)
+        self.say_in(thread["id"], text, formal=formal)
         return thread["id"]
 
-    def say_in(self, thread_id, text):
-        self.post(f"/api/discussions/{thread_id}/messages", {"text": text})
-        self.log("say", text[:200], thread=thread_id)
+    def say_in(self, thread_id, text, formal=False):
+        """Post one message. Refuses an essay.
+
+        The first run of this scenario produced 56 messages averaging five thousand
+        characters, one of them over twenty thousand - each agent posting a finished
+        report with its own headings into a thread nobody was reading yet. That is not
+        how a design review sounds. People say one thing, name who they need it from,
+        and stop; the next person answers THAT. The length limit is enforced here rather
+        than asked for in the brief, because the brief already asked.
+
+        `formal=True` raises the limit for the one case that earns it - a signed
+        position, a disposition, a DER decision - which is a document somebody will be
+        held to, not a chat message. It is still capped.
+        """
+        limit = FORMAL_MESSAGE_LIMIT if formal else MESSAGE_LIMIT
+        body = (text or "").strip()
+        if len(body) > limit:
+            raise ValueError(
+                f"This message is {len(body)} characters; the limit is {limit}. "
+                "Say one thing, name who you need the next thing from, and post it. "
+                "Put the detail on the OBJECT - attributes, notes, a finding - where it "
+                "can be navigated to, and reference it. If this really is a formal "
+                "position somebody will be held to, pass formal=True.")
+        self.post(f"/api/discussions/{thread_id}/messages", {"text": body})
+        self.log("say", body[:200], thread=thread_id)
+
+    def ask(self, person, subject, text):
+        """Open (or continue) a ONE-TO-ONE thread with one colleague and ask them something.
+
+        Most of what these roles need from each other is a question for one person, not an
+        announcement to nine. A private thread between two people is how that conversation
+        actually happens, and it keeps the shared threads readable - the first run put
+        every exchange into two threads, so the record of a change ran to 340,000
+        characters and nobody could find the decision in it.
+        """
+        return self.say(f"{subject} - {self.username} and {person}", text,
+                        participants=[person])
 
     def read_thread(self, subject):
         thread = next((t for t in self.threads() if t.get("subject") == subject), None)

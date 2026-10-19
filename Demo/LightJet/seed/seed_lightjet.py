@@ -92,14 +92,25 @@ RESOLUTION_FROM = ("mrbDisposition", "faiResult", "approvalStatus", "complianceS
                    "testResult", "assessmentResult", "auditResult")
 
 # ChangeBase's `priority` for each change, so the boards and lists sort the way a change
-# board actually prioritises. Safety-related and certification-blocking changes are
-# Critical; an obsolescence case is High; a performance recovery is Medium.
+# board actually prioritises. Safety-related and certification-blocking changes are the
+# most urgent; an obsolescence case is next; a performance recovery is normal.
+#
+# These values are the PLATFORM's scale, which is not the one this dataset's own types
+# use. ChangeBase declares P1 - Immediate / P2 - High / P3 - Normal / P4 - Low, while the
+# cst types declare Low / Medium / High / Critical. This table used to hold the cst scale,
+# which loaded silently - nothing enforced a list of values then - and left fourteen
+# change records holding a priority their own type forbids. Once enforcement arrived they
+# could not be saved at all: a form sends every attribute, so every edit came back 400,
+# and the change manager was locked out of the whole board by four words of vocabulary.
+# agents/fix_change_priorities.py repaired the site that had already been loaded.
 CHANGE_PRIORITY = {
-    "LSS-PR-00001": "Critical", "LSS-PR-00002": "Low", "LSS-PR-00003": "High",
-    "LSS-ECR-00001": "Critical", "LSS-ECR-00002": "Medium",
-    "LSS-ECR-00003": "High", "LSS-ECR-00004": "Critical",
-    "LSS-ECO-00001": "Critical", "LSS-ECO-00002": "Low", "LSS-ECO-00004": "Critical",
-    "LSS-ECN-00002": "Low", "LSS-ECN-00004": "Critical",
+    "LSS-PR-00001": "P1 - Immediate", "LSS-PR-00002": "P4 - Low",
+    "LSS-PR-00003": "P2 - High",
+    "LSS-ECR-00001": "P1 - Immediate", "LSS-ECR-00002": "P3 - Normal",
+    "LSS-ECR-00003": "P2 - High", "LSS-ECR-00004": "P1 - Immediate",
+    "LSS-ECO-00001": "P1 - Immediate", "LSS-ECO-00002": "P4 - Low",
+    "LSS-ECO-00004": "P1 - Immediate",
+    "LSS-ECN-00002": "P4 - Low", "LSS-ECN-00004": "P1 - Immediate",
 }
 
 # The legal transition maps the Engine enforces, copied from the controllers that own
@@ -265,7 +276,7 @@ def change_records() -> list[dict]:
     for report in QA.PROBLEM_REPORTS:
         record = {"type": "ProblemReport", **report}
         record["attrs"] = {"title": report["title"],
-                           "priority": CHANGE_PRIORITY.get(report["pn"], "High"),
+                           "priority": CHANGE_PRIORITY.get(report["pn"], "P2 - High"),
                            **report.get("attrs", {})}
         out.append(record)
     for chain_def in QA.CHANGE_CHAINS:
@@ -275,7 +286,7 @@ def change_records() -> list[dict]:
                 continue
             record = {"type": type_name, "folder": QA.F_PR, **change}
             record["attrs"] = {"title": change["title"],
-                               "priority": CHANGE_PRIORITY.get(change["pn"], "High"),
+                               "priority": CHANGE_PRIORITY.get(change["pn"], "P2 - High"),
                                **change.get("attrs", {})}
             if record.get("transitions"):
                 record["status"] = CHANGE_START_STATE

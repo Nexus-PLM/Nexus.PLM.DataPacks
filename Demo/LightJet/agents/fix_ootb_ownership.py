@@ -1,0 +1,262 @@
+"""Gives the OOTB-typed demo objects the owner their own data names.
+
+`apply_config_fixes.py` moved the 273 objects of this dataset's own types and left the
+platform's types alone, so the change board and the whole WBS were still owned by the
+account that loaded them. That matters because the shipped policy grants edit on `Own`:
+with the loader owning every ECR, the change manager could not edit one, which is the
+entire job of the role. Same for the programme plan - every task, phase and milestone was
+the loader's, so the person named on it could not touch it.
+
+Who holds what is already stated in the data, so nothing here is a judgement call:
+
+  * Program, Phase, WorkPackage, Task, Milestone -> `assignedTo`. That IS the holder; a
+    plan line with somebody's name on it is theirs.
+  * ProblemReport -> `originator`, the person who raised it.
+  * ECR, ECO, ECN -> these name nobody, and the record belongs to the change manager who
+    administers it, not to whoever asked for the change.
+
+Deliberately NOT moved:
+
+  * RequirementBaseline and its 29 items. A baseline is a snapshot taken at a moment -
+    editing one is not a thing anybody should be able to do, so leaving it with the
+    administrator is the correct answer rather than an oversight.
+  * Report and SavedSearch owned by the administrator, which are the administrator's.
+  * Links. A link's owner has never gated anything a role needs here.
+
+    python fix_ootb_ownership.py --dry-run     # says what it would move, writes nothing
+    python fix_ootb_ownership.py               # moves, then proves it as the real users
+
+The previous owner of everything it touches is written to reports/ootb-owners-backup.json
+before a single transfer, so this is reversible.
+"""
+from __future__ import annotations
+
+import argparse
+import io
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+HERE = Path(__file__).parent
+sys.path.insert(0, str(HERE))
+
+from plm_agent import ADMIN_USERNAME, Agent, Refused, admin_agent     # noqa: E402
+
+REPORTS = HERE / "reports"
+
+# The account that loaded the dataset, and the only current owner this will move from.
+LOADER = ADMIN_USERNAME
+
+# type -> the attribute that names the holder, or None when the type names nobody.
+HOLDER_ATTRIBUTE = {
+    "Program": "assignedTo",
+    "Phase": "assignedTo",
+    "WorkPackage": "assignedTo",
+    "Task": "assignedTo",
+    "Milestone": "assignedTo",
+    "ProblemReport": "originator",
+    "ECR": None,
+    "ECO": None,
+    "ECN": None,
+}
+
+# For the types that name nobody: the role that administers the record.
+OWNER_OF_LAST_RESORT = {"ECR": "h.okafor", "ECO": "h.okafor", "ECN": "h.okafor"}
+
+# States where refusing an edit is correct, so a failed probe there proves nothing. A
+# finished plan line is as closed as a released part: "Complete" is where most of this
+# dataset's WBS sits, and the first version of this probe read those six refusals as a
+# failure when they were the model working.
+LOCKED_STATES = {"Released", "Closed", "Cancelled", "Superseded", "Implemented",
+                 "Approved", "Rejected", "Complete", "Issued", "Effective",
+                 "Obsolete", "Void"}
+
+# Written back unchanged, so the probe proves the right to save without stating anything
+# new. The first version wrote `priority` back and hit a 400 instead - the loader had put
+# this dataset's own Low/Medium/High/Critical scale on types that declare P1..P4, which
+# fix_change_priorities.py repairs. A free-text attribute cannot fail that way.
+PROBE_ATTRIBUTES = ("title", "percentComplete", "problemStatement", "changeSummary")
+
+
+def say(text: str = "") -> None:
+    print(text, flush=True)
+
+
+def plan_moves(me: Agent) -> tuple[list[dict], list[dict]]:
+    users = me.get("/api/users") or []
+    uid = {u.get("username"): (u.get("userId") or u.get("id")) for u in users}
+    byid = {v: k for k, v in uid.items()}
+
+    objs = me.get("/api/plmobjects?pageSize=3000") or []
+    rows = objs if isinstance(objs, list) else objs.get("items", [])
+
+    backup, moves, unresolved = [], [], []
+    for o in rows:
+        if o.get("isDeleted"):
+            continue
+        type_name = str(o.get("typeName", ""))
+        if type_name not in HOLDER_ATTRIBUTE:
+            continue
+
+        oid = o["plmObjectId"]
+        was = byid.get(o.get("ownerId"))
+        backup.append({"objectId": oid, "partNumber": o.get("partNumber"),
+                       "typeName": type_name, "ownerId": o.get("ownerId"),
+                       "ownerUsername": was})
+
+        # Only the loader's objects. A task already held by the project manager who
+        # raised it is not the gap this fixes, and taking it off them would cost them
+        # the edit-Own they are using - the shipped policy grants edit on Own and
+        # little else, so every transfer gives one person a right and removes it from
+        # another. The gap is that the loader account holds things no account should.
+        if was != LOADER:
+            continue
+
+        attribute = HOLDER_ATTRIBUTE[type_name]
+        attrs = me.get(f"/api/plmobjects/{oid}/revisions/latest/attributes") or {}
+        holder = attrs.get(attribute) if attribute else None
+        if not (isinstance(holder, str) and holder in uid):
+            holder = OWNER_OF_LAST_RESORT.get(type_name)
+        if not holder or holder not in uid:
+            unresolved.append({"partNumber": o.get("partNumber"), "typeName": type_name})
+            continue
+        if uid[holder] == o.get("ownerId"):
+            continue
+
+        latest = me.get(f"/api/plmobjects/{oid}/revisions/latest") or {}
+        moves.append({"objectId": oid, "revisionId": latest.get("revisionId"),
+                      "partNumber": o.get("partNumber"), "typeName": type_name,
+                      "status": latest.get("status"), "from": was,
+                      "to": holder, "toId": uid[holder]})
+
+    # NEVER overwrite the first backup. This script's own --prove-only re-plans before it
+    # probes, and the second pass wrote the owners AFTER the transfers over the record of
+    # the owners BEFORE them - which quietly destroyed the one thing that made the change
+    # reversible. A later pass goes to its own file.
+    REPORTS.mkdir(parents=True, exist_ok=True)
+    first = REPORTS / "ootb-owners-backup.json"
+    target = first if not first.exists() else REPORTS / (
+        "ootb-owners-"
+        + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + ".json")
+    io.open(target, "w", encoding="utf-8").write(json.dumps(backup, indent=1))
+    return moves, unresolved
+
+
+def current_holdings(me: Agent) -> list[dict]:
+    """One object per owner, as the site stands, in the same shape `prove` reads."""
+    users = me.get("/api/users") or []
+    byid = {(u.get("userId") or u.get("id")): u.get("username") for u in users}
+    objs = me.get("/api/plmobjects?pageSize=3000") or []
+    rows = objs if isinstance(objs, list) else objs.get("items", [])
+
+    held = []
+    for o in rows:
+        type_name = str(o.get("typeName", ""))
+        if type_name not in HOLDER_ATTRIBUTE or o.get("isDeleted"):
+            continue
+        owner = byid.get(o.get("ownerId"))
+        if not owner or owner == LOADER:
+            continue
+        latest = me.get(f"/api/plmobjects/{o['plmObjectId']}/revisions/latest") or {}
+        held.append({"partNumber": o.get("partNumber"), "typeName": type_name,
+                     "status": latest.get("status"), "to": owner})
+    return held
+
+
+def prove(moves: list[dict]) -> int:
+    """Edit one object per new owner, AS that owner. A refusal here is the real answer."""
+    say("")
+    say("Proving it as the real users")
+    candidates: dict[str, dict] = {}
+    for row in moves:
+        if str(row.get("status")) in LOCKED_STATES:
+            continue
+        candidates.setdefault(row["to"], row)
+
+    if not candidates:
+        say("  nothing in a working state to probe - every moved object is locked by state")
+        return 0
+
+    bad = 0
+    for username, row in sorted(candidates.items()):
+        user = Agent(username, role=username)
+        pn = row["partNumber"]
+        try:
+            attrs = user.attributes(pn) or {}
+            key = next((k for k in PROBE_ATTRIBUTES if attrs.get(k) not in (None, "")), None)
+            if key is None:
+                say(f"  {username:<14} {row['typeName']:<14} {pn:<16} "
+                    f"nothing safe to write back, not probed")
+                continue
+            user.set_attributes(pn, {key: attrs[key]})
+            say(f"  {username:<14} edits {row['typeName']:<14} {pn:<16} "
+                f"({row['status']})  OK  [{key}]")
+        except Refused as exc:
+            bad += 1
+            say(f"  {username:<14} edits {row['typeName']:<14} {pn:<16} "
+                f"({row['status']})  REFUSED {exc.status} {str(exc.body)[:90]}")
+        except Exception as exc:                                     # noqa: BLE001
+            bad += 1
+            say(f"  {username:<14} edits {row['typeName']:<14} {pn:<16}  FAILED {exc}")
+    return bad
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--prove-only", action="store_true",
+                    help="skip the transfers and just check the result as the real users")
+    args = ap.parse_args()
+
+    me = admin_agent()
+
+    if args.prove_only:
+        # After the transfers there is nothing left to move, so the proof needs the
+        # intended owner rather than the planned change: who holds each object NOW.
+        bad = prove(current_holdings(me))
+        say("")
+        say("all probes passed" if not bad else f"{bad} probe(s) refused")
+        return 1 if bad else 0
+
+    moves, unresolved = plan_moves(me)
+
+    tally: dict[str, int] = {}
+    for row in moves:
+        key = f"{row['typeName']} -> {row['to']}"
+        tally[key] = tally.get(key, 0) + 1
+    say(f"{len(moves)} to move, {len(unresolved)} name nobody")
+    for key, count in sorted(tally.items(), key=lambda x: (-x[1], x[0])):
+        say(f"   {key:<34} {count}")
+    for row in unresolved[:10]:
+        say(f"   unresolved: {row['typeName']} {row['partNumber']}")
+
+    if args.dry_run:
+        say("")
+        say("(dry run - nothing written)")
+        return 0
+
+    moved, problems = 0, []
+    for row in moves:
+        if not row["revisionId"]:
+            problems.append((row["partNumber"], "no revision"))
+            continue
+        try:
+            me.post(f"/api/plmobjects/{row['objectId']}/revisions/{row['revisionId']}"
+                    f"/transfer-owner", {"newOwnerUserId": row["toId"]})
+            moved += 1
+        except Exception as exc:                                     # noqa: BLE001
+            problems.append((row["partNumber"], str(exc)[:140]))
+    say("")
+    say(f"transferred {moved}, failed {len(problems)}")
+    for pn, why in problems[:10]:
+        say(f"   {pn}: {why}")
+
+    bad = prove(moves)
+    say("")
+    say("all probes passed" if not bad else f"{bad} probe(s) still refused")
+    return 1 if (problems or bad) else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

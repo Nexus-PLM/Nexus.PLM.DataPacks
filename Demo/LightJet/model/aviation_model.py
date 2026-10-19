@@ -262,15 +262,36 @@ NADCAP_FAMILIES = [
 # ─────────────────────────────────────────────────────────────────────────────
 
 def a(name, display, kind="String", required=False, scope="Revision",
-      unit=None, lov=None, default=None):
+      unit=None, lov=None, default=None, override=False, disabled=False,
+      copy=None):
     """One attribute definition, shaped as the Engine's on-disk type JSON expects it.
 
     `defaultValue` is written as a JSON STRING, never a raw boolean or number. The Engine
     reads a type file through `TypeAttributeEntry`, whose `defaultValue` is `string?`; a
     raw `true` throws on deserialisation and takes the whole type file down with it.
+
+    `override` and `disabled` are the inheritance flags, and they are written only when
+    set - an explicit `"override": false` on every attribute would be noise in 69 type
+    files. Together they are how this model removes an INHERITED attribute it does not
+    want: an entry naming the ancestor's attribute, marked override and disabled, drops it
+    from the resolved type without touching the out-of-the-box file other customers share.
+
+    `copy=False` sets `copyOnRevision` false, which is NOT the Engine's default - an
+    attribute that says nothing is carried forward onto a new revision. That default is
+    right for a dimension and wrong for a signature: revising a drawing copied `checkedBy`,
+    `approvedBy` and `issueDate` forward, so a designer could mint a new issue of type
+    design data already bearing somebody else's approval, in one call, with no event
+    recording that the signature had been asserted. A signature is a statement about the
+    revision it was given on; the new one has not been checked by anybody yet.
     """
     row = {"name": name, "displayName": display, "type": kind,
            "required": required, "scope": scope}
+    if override:
+        row["override"] = True
+    if disabled:
+        row["disabled"] = True
+    if copy is not None:
+        row["copyOnRevision"] = copy
     if unit is not None:
         row["unit"] = unit
     if lov is not None:

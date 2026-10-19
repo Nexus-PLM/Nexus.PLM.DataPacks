@@ -23,14 +23,38 @@ substantiate, and something that can legitimately be rejected.
 | `NX00200303` | The task "Redesign ram air inlet scoop", At-Risk, 46% complete. |
 | `LSS-V-00002` | Air cycle machine, pinned at revision A in the BOM — qualification credit. |
 
-## The thread
+## The threads
 
-Everyone posts to **`NX-200 ATA 21 ram air scoop redesign`**. Read it before you post.
+**`NX-200 ATA 21 ram air scoop redesign`** is the shared thread, and it is for things the
+whole group needs: a decision, a position, a blocker that changes what others should do.
+Read it before you post.
+
+**Everything else goes one-to-one.** `me.ask("p.lindqvist", "LSS-21-0014 attachment",
+"...")` opens a private thread with one colleague. Most of what you need from each other
+is a question for one person, and asking it in front of nine is how a shared thread stops
+being readable.
+
+Last time every exchange went into the shared thread and it ran to 340,000 characters —
+56 messages averaging five thousand each, every one a finished report. Nobody could find
+the decision. `say` now refuses a message over 900 characters; that limit is the point,
+not an obstacle. Make one point, name who you need the next thing from, and put the detail
+on the OBJECT where it can be navigated to.
 
 ## The sequence
 
-Each role does its own part. You do not need to wait for the others to finish — post what
-you have, say what you need and from whom, and read the thread for answers.
+Each role does its own part, but this is a conversation and conversations take turns.
+
+**Post one thing, then go and do something else.** Do not write your whole position in one
+message and leave. If you asked somebody a question, carry on with work that does not
+depend on the answer, and come back and read.
+
+**Answer what was asked.** If somebody asked you a yes/no question, the first word of your
+reply is yes or no. An unanswered question in the thread is more urgent than another
+statement of your own.
+
+**It is fine to disagree, and fine to be waiting.** "I cannot clear this until stress give
+me the allowable" is a real state and worth posting. Nine simultaneous monologues is not a
+design review.
 
 1. **Programme manager** — read programme health and what the change costs in weight,
    schedule and certification. Chair the board: disposition `LSS-ECR-00002`, or say
