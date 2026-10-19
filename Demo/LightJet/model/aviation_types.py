@@ -150,9 +150,55 @@ TYPE_DESIGN_ITEM_ATTRS = [
            "Certification maintenance requirement", "Manufacturer recommendation",
            "Supplier component maintenance manual", "Not established"],
       default="Not established"),
+    # The out-of-the-box ItemsBase already declares unitWeight (Number, kg), and this model
+    # went on to declare massKg beside it. Two attributes, same meaning, same unit, nothing
+    # distinguishing them and nothing keeping them in step - and the loader populated only
+    # massKg, so every grid offered a "Unit Weight" column of zeros next to a "Mass" column
+    # with the real number. Marc picked the reasonable-looking one in BOM Builder and got a
+    # column of 0*, which is exactly the trap two synonyms set.
+    #
+    # massKg is the one that stays: it carries massStatus, massKgCalculated and volumeCm3
+    # around it, and it is the one with data. The inherited duplicate is disabled here, which
+    # removes it from the resolved type and therefore from every grid, picker and rollup
+    # offer on these types - without touching ItemsBase, which other customers use.
+    a("unitWeight", "Unit Weight", kind="Number", unit="kg",
+      override=True, disabled=True),
     a("massKg", "Mass", kind="Number", unit="kg"),
     a("massStatus", "Mass Status",
       lov=["Estimated", "Calculated", "Weighed", "Contractual"], default="Estimated"),
+    # Volume, so a mass can be CALCULATED from the material rather than typed.
+    #
+    # The model carried massKg and massStatus on every type-design item, and a Material
+    # type with a real density in kg/m3, and nothing joining them: a part's mass was a
+    # number somebody had entered, and "why is it that?" had no answer in the data. A
+    # weight rollup over typed-in masses demonstrates arithmetic, not configuration
+    # control - change the material of a part and nothing moves.
+    #
+    # Volume sits on the PART and density on the MATERIAL because that is who owns
+    # which: the design engineer owns the part and knows its volume, the materials
+    # engineer owns the material and publishes its density, and neither has to write in
+    # the other's record. The mass is then the product of the two, computed when the
+    # design engineer links them and stored here so the BOM rollup can sum it.
+    #
+    # cm3 rather than m3 deliberately: a detail part is a few hundred cm3, so m3 makes
+    # every value a string of leading zeros - which is exactly where a factor-of-1000
+    # mass error hides. The unit is declared on both ends of the product, so the
+    # conversion (massKg = density * volumeCm3 / 1e6) is visible on the types.
+    # What the material arithmetic produced, kept beside the authoritative mass rather
+    # than instead of it. A DECLARED mass outranks a calculated one - a weighed assembly
+    # and a supplier's contractual figure are measurements, and a calculation must never
+    # overwrite a measurement - but the two being different is itself worth seeing:
+    # "calculated 1.38, weighed 1.46" is a finding, and if the calculated value were
+    # simply discarded nobody could ever notice it.
+    a("massKgCalculated", "Mass (calculated from material)", kind="Number", unit="kg"),
+    a("volumeCm3", "Volume", kind="Number", unit="cm3"),
+    # The basis matters as much as the number, for the same reason massStatus does: a
+    # volume off a released CAD solid and one somebody eyeballed support very different
+    # claims about the aircraft's weight, and after the fact they look identical.
+    a("volumeBasis", "Volume Basis",
+      lov=["CAD solid model", "Calculated from drawing", "Estimated",
+           "Measured", "Not established"],
+      default="Not established"),
     a("cgStationMm", "CG Station (X)", kind="Number", unit="mm"),
     a("cgButtlineMm", "CG Buttline (Y)", kind="Number", unit="mm"),
     a("cgWaterlineMm", "CG Waterline (Z)", kind="Number", unit="mm"),
@@ -2007,6 +2053,41 @@ PINNED_REVISION_RULE = a(
     "revisionRule", "Revision Rule", scope="Object", default="pinned",
     lov=["latest", "latest-released", "pinned"])
 
+# ── What a material link carries ─────────────────────────────────────────────
+#
+# The volume is on the part and the density is on the material, so the link does not
+# repeat either - a second copy of a number is a second thing to disagree (NI-00000593
+# is exactly that: the sealant recorded twice, and the two can differ).
+#
+# What the link does carry is the SHARE of the part's volume this material accounts for,
+# which is what makes a multi-material part ordinary rather than a special case: a
+# titanium bracket sealed with polysulphide is two links at, say, 97% and 3%, and the
+# part still has one volume. That answers NI-00000681 - "the dedicated material link is
+# single valued, so a part made of one material and sealed with another cannot record
+# both" - without giving the volume two homes.
+#
+# massContributionKg is computed by the Engine when the link is created and stored on
+# the link, so the sum on the part can be read back line by line and audited:
+#
+#     link.massContributionKg = material.density * part.volumeCm3 * share / 1e6
+#     part.massKg             = SUM of its links' massContributionKg
+#
+# and the BOM rollup then sums part.massKg up the structure, which it already does.
+MATERIAL_CONTENT_ATTRS = [
+    # 100 unless a part is made of more than one material. A single-material part needs
+    # no thought, which is the point of the default.
+    a("volumeSharePct", "Volume Share", kind="Number", unit="%", default=100),
+    # Stored, not recomputed on read. A mass statement records what was claimed when it
+    # was claimed; if the density or the volume later changes, the stored contribution
+    # and a fresh calculation differ, and that difference is the signal the mass is
+    # stale - the same suspect mechanism reviewStatus provides on every other kind.
+    a("massContributionKg", "Mass Contribution", kind="Number", unit="kg"),
+    a("materialRole", "Material Role",
+      lov=["Primary structure", "Sealant", "Adhesive", "Coating", "Surface treatment",
+           "Core", "Insulation", "Potting compound", "Other"],
+      default="Primary structure"),
+]
+
 ABSTRACT_REFERENCE_BASE = ty(
     "ReferenceBase", "Light Speed Systems Reference Base",
     "Abstract base for the NX-200 programme's own reference kinds. Sits between the "
@@ -2032,6 +2113,20 @@ CONCRETE_REFERENCE_TYPES = [
        "on another - and one mrbDisposition value for a whole record cannot say that "
        "(NI-00000713, NI-00000710).",
        t("ReferenceBase")),
+
+    ty("MadeOfLink", "Made Of",
+       "The source item is made of the target material. Creating one is a design act - "
+       "the design engineer owns the part and its volume, the materials engineer owns "
+       "the material and publishes its density - and on creation the Engine multiplies "
+       "the two and stores the mass on the part, so the BOM rollup can sum it. Mass "
+       "becomes calculable instead of asserted, and re-sourcing a material moves the "
+       "aircraft weight, which is the whole point of holding density on the material "
+       "object. volumeSharePct lets a part made of more than one material apportion its "
+       "volume without the volume having two homes (NI-00000681). Pinned, like every "
+       "other credit-bearing kind: a mass calculated against revision A of a material "
+       "is not a claim about revision B.",
+       t("ReferenceBase"),
+       attributes=[PINNED_REVISION_RULE] + MATERIAL_CONTENT_ATTRS),
 
     ty("EvidenceForLink", "Evidence For",
        "The source is evidence offered in support of the target compliance demonstration: "

@@ -262,15 +262,25 @@ NADCAP_FAMILIES = [
 # ─────────────────────────────────────────────────────────────────────────────
 
 def a(name, display, kind="String", required=False, scope="Revision",
-      unit=None, lov=None, default=None):
+      unit=None, lov=None, default=None, override=False, disabled=False):
     """One attribute definition, shaped as the Engine's on-disk type JSON expects it.
 
     `defaultValue` is written as a JSON STRING, never a raw boolean or number. The Engine
     reads a type file through `TypeAttributeEntry`, whose `defaultValue` is `string?`; a
     raw `true` throws on deserialisation and takes the whole type file down with it.
+
+    `override` and `disabled` are the inheritance flags, and they are written only when
+    set - an explicit `"override": false` on every attribute would be noise in 69 type
+    files. Together they are how this model removes an INHERITED attribute it does not
+    want: an entry naming the ancestor's attribute, marked override and disabled, drops it
+    from the resolved type without touching the out-of-the-box file other customers share.
     """
     row = {"name": name, "displayName": display, "type": kind,
            "required": required, "scope": scope}
+    if override:
+        row["override"] = True
+    if disabled:
+        row["disabled"] = True
     if unit is not None:
         row["unit"] = unit
     if lov is not None:
