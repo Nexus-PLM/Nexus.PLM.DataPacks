@@ -29,7 +29,9 @@ from aviation_model import (
     CERT_BASIS, COMPLIANCE_STATES, CONFIDENTIALITY, DAL, DO160_SECTIONS, EXPORT_CLASS,
     EXPORT_JURISDICTION, FAILURE_EFFECT, MEANS_OF_COMPLIANCE, NADCAP_FAMILIES,
     PUBLICATION_STATES, QUALITY_STATES, RETENTION, SUPPORT_STATES, TYPE_DESIGN_STATES,
-    WF_COMPLIANCE, WF_FAI, WF_MRB, WF_PUBLICATION, WF_SUPPLIER, WF_TYPE_DESIGN,
+    WF_CERTIFICATE_ISSUE, WF_COMPLIANCE, WF_CONCESSION, WF_CORRECTIVE_ACTION,
+    WF_FAI, WF_FINDING, WF_MRB,
+    WF_PROCESS_SPEC, WF_PUBLICATION, WF_SUBSTANTIATION, WF_SUPPLIER, WF_TYPE_DESIGN,
     a, states, t,
 )
 
@@ -469,6 +471,14 @@ CONCRETE_ITEM_TYPES = [
        "actually orders against is standardNumber. A standard part is type design data but "
        "the design authority is the standards body, not Light Speed Systems.",
        t("TypeDesignItemBase"), numbering=f"{PREFIX}LssStandardPart",
+       actions=[action("RequestApprovalForUse", "Request approval for use",
+                       "Starts the source approval route, which is the right shape "
+                       "for a catalogue part: supply chain confirms the source and "
+                       "obsolescence position, quality the AS9100D 8.4 controls and "
+                       "counterfeit safeguards, and engineering accepts it "
+                       "technically for use on the programme. Released previously "
+                       "had no route at all.",
+                       WF_SUPPLIER, ["In Work", "In Design Review"])],
        attributes=[
            a("standardFamily", "Standard Family",
              lov=["AN", "MS", "NAS", "NASM", "BACB", "EN", "ISO", "DIN", "LN", "SAE"],
@@ -1124,6 +1134,15 @@ CONCRETE_DOC_TYPES = [
        "has no route back out of Issued.",
        t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssQualityRecord",
        lifecycle=states(CERTIFICATE_STATES),
+       actions=[action("SubmitForIssue", "Submit for issue",
+                       "Starts the certificate issue route: quality verifies the "
+                       "certificate against the purchase order and its flowed-down "
+                       "requirements, then an authorised signatory signs it. Both "
+                       "this type and the airworthiness release had an Issued state "
+                       "only a signatory could enter and no action to reach it, so "
+                       "the only way to issue the one document whose purpose is to "
+                       "carry a signature was a bare status change.",
+                       WF_CERTIFICATE_ISSUE, ["Draft"])],
        attributes=[
            a("supplierName", "Supplier", required=True),
            a("supplierCageCode", "Supplier CAGE Code"),
@@ -1147,6 +1166,15 @@ CONCRETE_DOC_TYPES = [
        "fields rather than as text in an attachment.",
        t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssQualityRecord",
        lifecycle=states(CERTIFICATE_STATES),
+       actions=[action("SubmitForIssue", "Submit for issue",
+                       "Starts the certificate issue route: quality verifies the "
+                       "certificate against the purchase order and its flowed-down "
+                       "requirements, then an authorised signatory signs it. Both "
+                       "this type and the airworthiness release had an Issued state "
+                       "only a signatory could enter and no action to reach it, so "
+                       "the only way to issue the one document whose purpose is to "
+                       "carry a signature was a bare status change.",
+                       WF_CERTIFICATE_ISSUE, ["Draft"])],
        attributes=[
            a("formType", "Form Type",
              lov=["FAA Form 8130-3", "EASA Form 1", "TCCA Form One",
@@ -1208,6 +1236,19 @@ CONCRETE_DOC_TYPES = [
        "frozen.",
        t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssProcessSpec",
        lifecycle=states(TYPE_DESIGN_STATES),
+       # This type had NO workflow bound, so every declared action answered 422
+       # no_workflow_bound and the object was frozen: a manufacturing engineer could
+       # neither submit it for approval nor revise it, and release was a bare status flip
+       # with no approver and no trail (NI-00000567, NI-00000689).
+       actions=[action("SubmitForApproval", "Submit for approval",
+                       "Starts the special process approval route: the process owner and "
+                       "quality in parallel, then an airworthiness signatory. A special "
+                       "process cannot be verified by inspecting the part afterwards, so "
+                       "the approved parameters are the evidence of conformity and who "
+                       "approved them is the record.",
+                       WF_PROCESS_SPEC,
+                       ["In Work", "In Design Review", "In Stress Review",
+                        "Airworthiness Sign-off"])],
        attributes=[
            a("processFamily", "Process Family", lov=NADCAP_FAMILIES, required=True),
            a("governingStandard", "Governing Standard"),
@@ -1515,7 +1556,10 @@ CONCRETE_RECORD_TYPES = [
        "evidence for the structural paragraphs, which makes it the single most "
        "consequential document a stress engineer produces.",
        t("TypeDesignDocumentsBase"), numbering=f"{PREFIX}LssSubstantiation",
-       lifecycle=states(TYPE_DESIGN_STATES), actions=[RELEASE_ACTION],
+       lifecycle=states(TYPE_DESIGN_STATES),
+       actions=[action("SubmitForRelease", "Submit substantiation for release",
+                       'Starts the substantiation release route: an independent stress check and design acceptance in parallel, then an airworthiness signatory. The check is separate from the review because an unchecked stress analysis is not evidence.',
+                       WF_SUBSTANTIATION, ["In Work", "In Design Review", "In Stress Review", "Airworthiness Sign-off"])],
        attributes=[
            a("analysisType", "Analysis Type",
              lov=["Static strength", "Fatigue", "Damage tolerance", "Flutter and aeroelastic",
@@ -1564,6 +1608,9 @@ CONCRETE_RECORD_TYPES = [
        "a waiver AFTER, and an open-ended concession is a finding in any audit.",
        t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssQualityRecord",
        lifecycle=states(QUALITY_STATES),
+       actions=[action("SubmitConcession", "Submit concession for approval",
+                       'Starts the concession approval route: engineering justification and quality control of the bounds in parallel, then airworthiness concurrence. A departure from the approved design is authorised here or not at all.',
+                       WF_CONCESSION, ["Open", "Under Review"])],
        attributes=[
            a("concessionType", "Concession Type",
              lov=["Deviation - before manufacture", "Waiver - after manufacture",
@@ -1597,6 +1644,9 @@ CONCRETE_RECORD_TYPES = [
        "corrective action from an intention.",
        t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssQualityRecord",
        lifecycle=states(QUALITY_STATES),
+       actions=[action("SubmitForClosure", "Submit for closure",
+                       'Starts the corrective action closure route. Effectiveness verification is its own gate, because that is the step that gets skipped.',
+                       WF_CORRECTIVE_ACTION, ["Open", "Under Review", "Dispositioned"])],
        attributes=[
            a("problemStatement", "Problem Statement", required=True),
            a("rootCauseMethod", "Root Cause Method",
@@ -1705,6 +1755,9 @@ CONCRETE_RECORD_TYPES = [
        "that the clock was met.",
        t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssInServiceRecord",
        lifecycle=states(QUALITY_STATES),
+       actions=[action("RaiseForReview", "Raise for review",
+                       'Starts the review route for an in-service occurrence: the discipline whose system misbehaved assesses it, then airworthiness decides whether it is fleet-wide.',
+                       WF_FINDING, ["Open", "Under Review"])],
        attributes=[
            a("occurrenceType", "Occurrence Type",
              lov=["Pilot report", "Maintenance finding", "Component failure",
@@ -1767,6 +1820,9 @@ CONCRETE_RECORD_TYPES = [
        "and never reach a crew (NI-00000532, NI-00000576).",
        t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssPublication",
        lifecycle=states(PUBLICATION_STATES),
+       actions=[action("SubmitForIssue", "Submit for issue",
+                       'Starts the publication issue route. A limitation reaches a crew or a maintenance organisation, so it carries an airworthiness signature.',
+                       WF_PUBLICATION, ["Draft", "In Review"])],
        attributes=[
            a("limitationKind", "Limitation Kind",
              lov=["Airworthiness limitation (ALS - mandatory)",
@@ -1801,6 +1857,9 @@ CONCRETE_RECORD_TYPES = [
        "programme at all (NI-00000533).",
        t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssPublication",
        lifecycle=states(PUBLICATION_STATES),
+       actions=[action("SubmitForIssue", "Submit for issue",
+                       'Starts the publication issue route, so a scheduled task reaches the maintenance programme through the same signature as any other instruction to an operator.',
+                       WF_PUBLICATION, ["Draft", "In Review"])],
        attributes=[
            a("taskCode", "Task Code", required=True),
            a("taskDescription", "Task", required=True),
@@ -1837,6 +1896,9 @@ CONCRETE_RECORD_TYPES = [
        "field.",
        t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssCertificationFinding",
        lifecycle=states(QUALITY_STATES),
+       actions=[action("SubmitResponse", "Submit response for closure",
+                       'Starts the finding closure route: the discipline the finding concerns reviews the response, then airworthiness decides whether it is fit to put to the authority.',
+                       WF_FINDING, ["Open", "Under Review"])],
        attributes=[
            a("findingClass", "Finding Class",
              lov=["Level 1 finding - airworthiness significant",

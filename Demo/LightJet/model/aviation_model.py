@@ -551,9 +551,23 @@ def _node(node_id, node_type, title, row, col, **extra):
     return node
 
 
-def _approver(node_id, title, group, row, col, mode="All", count=1):
+def _approver(node_id, title, group, row, col, mode="All", count=1, asks=None):
+    """One approval gate.
+
+    `asks` is the question the approver is actually being asked, and it is not decoration.
+    The Engine puts a node's `Parameters["instruction"]` on every task it creates and into
+    the notification body; with no instruction a task arrives as a title, a null
+    instruction and two buttons, so the approver is asked to approve something without
+    being told what approving it will do. The reporter of NI-00000586 put it exactly that
+    way: "a title, a null instruction, and Approve or Reject".
+
+    Writing the question also makes the route reviewable. An approval gate whose question
+    cannot be written down in a sentence is usually a gate nobody has thought about.
+    """
+    parameters = {"instruction": asks} if asks else None
     return _node(node_id, "Approver", title, row, col,
                  ActionKey="approve_workflow",
+                 Parameters=parameters,
                  ApproverGroupIds=[f"{{{{GROUP:{group}}}}}"],
                  ApprovalMode=mode, RequiredApprovalCount=count,
                  AssignToInitiator=False)
@@ -608,16 +622,25 @@ WF_MRB = "21a10000-0000-4000-a000-000000000003"
 WF_COMPLIANCE = "21a10000-0000-4000-a000-000000000004"
 WF_SUPPLIER = "21a10000-0000-4000-a000-000000000005"
 WF_PUBLICATION = "21a10000-0000-4000-a000-000000000006"
+WF_PROCESS_SPEC = "21a10000-0000-4000-a000-000000000007"
+WF_SUBSTANTIATION = "21a10000-0000-4000-a000-000000000008"
+WF_CONCESSION = "21a10000-0000-4000-a000-000000000009"
+WF_FINDING = "21a10000-0000-4000-a000-00000000000a"
+WF_CORRECTIVE_ACTION = "21a10000-0000-4000-a000-00000000000b"
+WF_CERTIFICATE_ISSUE = "21a10000-0000-4000-a000-00000000000c"
 
 WORKFLOWS = [
     workflow(
         WF_TYPE_DESIGN, f"{PREFIX}LssTypeDesignRelease", "Type design data release",
         [
             _node("start", "Start", "Submit for release", 2, 0),
-            _approver("design", "Design check", "LSS Design Engineering", 0, 2),
-            _approver("stress", "Stress substantiation", "LSS Stress and Loads", 2, 2),
+            _approver("design", "Design check", "LSS Design Engineering", 0, 2,
+                      asks='Is the definition complete and correct, and does it match the drawing? Approving sends it to stress; it does not release it.'),
+            _approver("stress", "Stress substantiation", "LSS Stress and Loads", 2, 2,
+                      asks='Is the structural substantiation complete, with positive margins against the critical load case? Approving sends it to airworthiness; it does not release it.'),
             _approver("airworthiness", "Airworthiness sign-off (DOA privilege)",
-                      "LSS Airworthiness and Certification", 1, 4),
+                      "LSS Airworthiness and Certification", 1, 4,
+                      asks='Exercise the Part 21A.263 design organisation privilege: does this data comply with the certification basis? APPROVING RELEASES IT - aeroplanes may be built to it, and the only ways out afterwards are a new revision or supersession.'),
             _status("release", "Set Released", "Released", 1, 6),
             _node("end", "End", "End", 1, 8),
         ],
@@ -640,9 +663,11 @@ WORKFLOWS = [
         [
             _node("start", "Start", "Submit FAI", 1, 0),
             _approver("quality", "Quality review (AS9102 Forms 1-3 complete)",
-                      "LSS Quality Assurance", 1, 2),
+                      "LSS Quality Assurance", 1, 2,
+                      asks='Are AS9102 Forms 1, 2 and 3 complete, and is every ballooned characteristic accounted for? Approving sends it to manufacturing engineering.'),
             _approver("mfg", "Manufacturing engineering concurrence",
-                      "LSS Manufacturing Engineering", 1, 4),
+                      "LSS Manufacturing Engineering", 1, 4,
+                      asks='Are the production process and tooling that made this part the ones the first article covers? Approving sets the report Dispositioned.'),
             _status("accept", "Set Dispositioned", "Dispositioned", 1, 6),
             _node("end", "End", "End", 1, 8),
         ],
@@ -663,10 +688,13 @@ WORKFLOWS = [
         [
             _node("start", "Start", "Raise nonconformance", 1, 0),
             _approver("quality", "Quality containment review",
-                      "LSS Quality Assurance", 1, 2),
-            _approver("mrb", "Material review board", "LSS Material Review Board", 1, 4),
+                      "LSS Quality Assurance", 1, 2,
+                      asks='Is the nonconformance contained - suspect product identified, quarantined and bounded? Approving sends it to the material review board for disposition.'),
+            _approver("mrb", "Material review board", "LSS Material Review Board", 1, 4,
+                      asks='Decide the disposition: use as is, rework, repair to an approved scheme, scrap or return to supplier. Any disposition that leaves the deviation in the aeroplane needs airworthiness concurrence next, which approving will request.'),
             _approver("airworthiness", "Airworthiness concurrence",
-                      "LSS Airworthiness and Certification", 1, 6),
+                      "LSS Airworthiness and Certification", 1, 6,
+                      asks='Does the proposed disposition leave the aeroplane compliant with the certification basis? Approving sets the nonconformance Dispositioned.'),
             _status("disposition", "Set Dispositioned", "Dispositioned", 1, 8),
             _node("end", "End", "End", 1, 10),
         ],
@@ -688,9 +716,11 @@ WORKFLOWS = [
         [
             _node("start", "Start", "Submit evidence", 1, 0),
             _approver("systems", "Systems engineering review",
-                      "LSS Systems Engineering", 0, 2),
+                      "LSS Systems Engineering", 0, 2,
+                      asks='Is the evidence complete and does it actually demonstrate the means of compliance that was agreed? Approving offers it to certification for acceptance.'),
             _approver("airworthiness", "Certification acceptance",
-                      "LSS Airworthiness and Certification", 1, 4),
+                      "LSS Airworthiness and Certification", 1, 4,
+                      asks='Accept this means-of-compliance demonstration under the DOA privilege. APPROVING SETS IT ACCEPTED - the only route afterwards is a finding that re-opens it.'),
             _status("accept", "Set Accepted", "Accepted", 1, 6),
             _node("end", "End", "End", 1, 8),
         ],
@@ -709,11 +739,14 @@ WORKFLOWS = [
         WF_SUPPLIER, f"{PREFIX}LssSupplierPartApproval", "Supplier part source approval",
         [
             _node("start", "Start", "Request source approval", 1, 0),
-            _approver("supply", "Supply chain review", "LSS Supply Chain", 0, 2),
+            _approver("supply", "Supply chain review", "LSS Supply Chain", 0, 2,
+                      asks="Is the supplier's qualification evidence complete - audit, capability, flowdown accepted? Approving sends it to quality."),
             _approver("quality", "Quality approval (AS9100D 8.4)",
-                      "LSS Quality Assurance", 2, 2),
+                      "LSS Quality Assurance", 2, 2,
+                      asks='Does this supplier meet the AS9100D 8.4 control requirements for the scope being approved? Approving sends it to engineering for technical acceptance.'),
             _approver("engineering", "Engineering technical acceptance",
-                      "LSS Design Engineering", 1, 4),
+                      "LSS Design Engineering", 1, 4,
+                      asks='Can this supplier make the parts to the drawing and the special-process specifications? Approving adds them to the approved source list.'),
             _status("approve", "Set Active", "Active", 1, 6),
             _node("end", "End", "End", 1, 8),
         ],
@@ -736,9 +769,11 @@ WORKFLOWS = [
         [
             _node("start", "Start", "Submit for issue", 1, 0),
             _approver("support", "Customer support review",
-                      "LSS Customer Support", 0, 2),
+                      "LSS Customer Support", 0, 2,
+                      asks='Are the embodiment instructions, effectivity and compliance period correct and achievable by an operator? Approving sends it to airworthiness.'),
             _approver("airworthiness", "Airworthiness approval",
-                      "LSS Airworthiness and Certification", 1, 4),
+                      "LSS Airworthiness and Certification", 1, 4,
+                      asks='Approve this publication for issue to operators under the DOA privilege. APPROVING ISSUES IT - it becomes the instruction the fleet works to, and a mandatory bulletin carries a compliance period.'),
             _status("issue", "Set Issued", "Issued", 1, 6),
             _node("end", "End", "End", 1, 8),
         ],
@@ -751,5 +786,211 @@ WORKFLOWS = [
         ],
         "Issues a service bulletin or other continued-airworthiness publication. A mandatory "
         "bulletin carries an airworthiness signature because operators act on it.",
+    ),
+    workflow(
+        WF_PROCESS_SPEC, f"{PREFIX}LssProcessSpecApproval", "Special process approval",
+        [
+            _node("start", "Start", "Submit for approval", 1, 0),
+            _approver("process", "Process owner review",
+                      "LSS Manufacturing Engineering", 0, 2,
+                      asks="Are the parameters, their limits and the qualification evidence "
+                           "complete, and is the process capable at those limits? Approving "
+                           "sends it to quality."),
+            _approver("quality", "Quality approval (NADCAP scope)",
+                      "LSS Quality Assurance", 2, 2,
+                      asks="Is the process under control - operator approval, equipment "
+                           "calibration, periodic re-qualification, and NADCAP accreditation "
+                           "where the specification requires it? Approving sends it to "
+                           "airworthiness."),
+            _approver("airworthiness", "Airworthiness approval",
+                      "LSS Airworthiness and Certification", 1, 4,
+                      asks="A special process is one whose result cannot be verified by "
+                           "inspecting the part afterwards, so releasing it accepts the "
+                           "parameters AS the evidence of conformity. Does that hold? "
+                           "APPROVING RELEASES IT."),
+            _status("release", "Set Released", "Released", 1, 6),
+            _node("end", "End", "End", 1, 8),
+        ],
+        [
+            _conn("c1", "start", "process"),
+            _conn("c2", "start", "quality"),
+            _conn("c3", "process", "airworthiness"),
+            _conn("c4", "quality", "airworthiness"),
+            _conn("c5", "airworthiness", "release"),
+            _conn("c6", "release", "end"),
+            _conn("r1", "airworthiness", "start", reject=True),
+        ],
+        "Approves a special process specification. The manufacturing engineer could not "
+        "invoke any action on a process specification at all - every declared action "
+        "answered 422 no_workflow_bound and the object was frozen - so release was a bare "
+        "status flip with no approver and no trail (NI-00000567, NI-00000689). That is the "
+        "wrong shape for this type in particular: a special process is defined as one whose "
+        "result cannot be verified by inspecting the finished part, so the approved "
+        "parameters ARE the evidence of conformity and who approved them is the whole "
+        "record.",
+    ),
+    workflow(
+        WF_SUBSTANTIATION, f"{PREFIX}LssSubstantiationRelease", "Substantiation release",
+        [
+            _node("start", "Start", "Submit substantiation", 1, 0),
+            _approver("check", "Independent stress check",
+                      "LSS Stress and Loads", 0, 2,
+                      asks="Independently check the analysis: method, load cases, "
+                           "allowables basis and the arithmetic. This is a CHECK, not a "
+                           "review - it must be someone other than the author, and the "
+                           "minimum margin is the number to confirm."),
+            _approver("design", "Design acceptance",
+                      "LSS Design Engineering", 2, 2,
+                      asks="Does the substantiated configuration match the design as "
+                           "defined, and can any inspection threshold or life limit it "
+                           "imposes actually be met in service?"),
+            _approver("airworthiness", "Airworthiness sign-off (DOA privilege)",
+                      "LSS Airworthiness and Certification", 1, 4,
+                      asks="Accept this as compliance evidence for the structural "
+                           "paragraphs of the certification basis. APPROVING RELEASES IT, "
+                           "and any inspection threshold or life limit it carries has to "
+                           "reach the airworthiness limitations section."),
+            _status("release", "Set Released", "Released", 1, 6),
+            _node("end", "End", "End", 1, 8),
+        ],
+        [
+            _conn("c1", "start", "check"),
+            _conn("c2", "start", "design"),
+            _conn("c3", "check", "airworthiness"),
+            _conn("c4", "design", "airworthiness"),
+            _conn("c5", "airworthiness", "release"),
+            _conn("c6", "release", "end"),
+            _conn("r1", "airworthiness", "start", reject=True),
+        ],
+        "Releases a structural substantiation. The independent check comes first and is "
+        "separate from the review on purpose: an unchecked stress analysis is not evidence, "
+        "and the one thing the platform cannot yet enforce is that the checker is not the "
+        "author - which is why the gate's question says so in words.",
+    ),
+    workflow(
+        WF_CONCESSION, f"{PREFIX}LssConcessionApproval", "Concession approval",
+        [
+            _node("start", "Start", "Raise concession", 1, 0),
+            _approver("engineering", "Engineering justification",
+                      "LSS Design Engineering", 0, 2,
+                      asks="Is the departure technically acceptable, and is the "
+                           "justification one that would survive being read back in two "
+                           "years? State the effect on fit, form, function and life."),
+            _approver("quality", "Quality control of the concession",
+                      "LSS Quality Assurance", 2, 2,
+                      asks="Are the quantity, serial range and expiry bounded and "
+                           "enforceable? An open-ended concession is a finding in any "
+                           "audit."),
+            _approver("airworthiness", "Airworthiness concurrence",
+                      "LSS Airworthiness and Certification", 1, 4,
+                      asks="Does the aeroplane remain compliant with the certification "
+                           "basis with this departure embodied? APPROVING AUTHORISES THE "
+                           "DEPARTURE for the stated effectivity."),
+            _status("approve", "Set Dispositioned", "Dispositioned", 1, 6),
+            _node("end", "End", "End", 1, 8),
+        ],
+        [
+            _conn("c1", "start", "engineering"),
+            _conn("c2", "start", "quality"),
+            _conn("c3", "engineering", "airworthiness"),
+            _conn("c4", "quality", "airworthiness"),
+            _conn("c5", "airworthiness", "approve"),
+            _conn("c6", "approve", "end"),
+            _conn("r1", "airworthiness", "start", reject=True),
+        ],
+        "Authorises a deviation or waiver. It was two values in a nonconformance's "
+        "disposition list, so a departure from the approved design could be authorised with "
+        "no route, no named approver, no effectivity and no expiry (NI-00000595).",
+    ),
+    workflow(
+        WF_FINDING, f"{PREFIX}LssFindingClosure", "Finding closure",
+        [
+            _node("start", "Start", "Submit response", 1, 0),
+            _approver("discipline", "Discipline response review",
+                      "LSS Systems Engineering", 0, 2,
+                      asks="Does the response actually address the finding, with evidence? "
+                           "A response that restates the position without new evidence "
+                           "will be returned by the authority."),
+            _approver("airworthiness", "Closure recommendation",
+                      "LSS Airworthiness and Certification", 1, 4,
+                      asks="Is this ready to put to the authority as a closure proposal, "
+                           "and does it say plainly what certification credit is affected? "
+                           "Approving records the closure basis."),
+            _status("close", "Set Closed", "Closed", 1, 6),
+            _node("end", "End", "End", 1, 8),
+        ],
+        [
+            _conn("c1", "start", "discipline"),
+            _conn("c2", "discipline", "airworthiness"),
+            _conn("c3", "airworthiness", "close"),
+            _conn("c4", "close", "end"),
+            _conn("r1", "airworthiness", "start", reject=True),
+        ],
+        "Closes out a certification finding. The applicant responds, the response is "
+        "reviewed by the discipline it concerns, and airworthiness decides whether it is "
+        "fit to put to the authority. The finding itself is the authority's instrument, so "
+        "nothing here closes it unilaterally - it records the basis on which closure is "
+        "proposed.",
+    ),
+    workflow(
+        WF_CORRECTIVE_ACTION, f"{PREFIX}LssCorrectiveActionClosure",
+        "Corrective action closure",
+        [
+            _node("start", "Start", "Submit for closure", 1, 0),
+            _approver("owner", "Action owner confirmation",
+                      "LSS Manufacturing Engineering", 0, 2,
+                      asks="Has the action been implemented as written, and is the "
+                           "preventive action in place rather than merely planned?"),
+            _approver("quality", "Effectiveness verification",
+                      "LSS Quality Assurance", 1, 4,
+                      asks="Has effectiveness been VERIFIED by the declared method, with "
+                           "evidence? This is the gate that separates a corrective action "
+                           "from an intention - do not approve on the strength of the "
+                           "action having been done."),
+            _status("close", "Set Closed", "Closed", 1, 6),
+            _node("end", "End", "End", 1, 8),
+        ],
+        [
+            _conn("c1", "start", "owner"),
+            _conn("c2", "owner", "quality"),
+            _conn("c3", "quality", "close"),
+            _conn("c4", "close", "end"),
+            _conn("r1", "quality", "start", reject=True),
+        ],
+        "Closes an AS9100D corrective action. A nonconformance could be dispositioned and "
+        "closed with its corrective action pointing at nothing, and nothing anywhere said "
+        "whether the action had worked (NI-00000570). Effectiveness verification is its own "
+        "gate because that is the step that gets skipped.",
+    ),
+    workflow(
+        WF_CERTIFICATE_ISSUE, f"{PREFIX}LssCertificateIssue", "Certificate issue",
+        [
+            _node("start", "Start", "Submit for issue", 1, 0),
+            _approver("quality", "Quality verification",
+                      "LSS Quality Assurance", 0, 2,
+                      asks="Does the certificate match the purchase order and the "
+                           "flowed-down requirements, and is every statement on it "
+                           "supported? Approving sends it for signature."),
+            _approver("airworthiness", "Authorised signature",
+                      "LSS Airworthiness and Certification", 1, 4,
+                      asks="Sign this certificate under the organisation's privilege. "
+                           "APPROVING ISSUES IT, and an issued certificate is immutable - "
+                           "the lifecycle has no route back out of Issued, only "
+                           "withdrawal."),
+            _status("issue", "Set Issued", "Issued", 1, 6),
+            _node("end", "End", "End", 1, 8),
+        ],
+        [
+            _conn("c1", "start", "quality"),
+            _conn("c2", "quality", "airworthiness"),
+            _conn("c3", "airworthiness", "issue"),
+            _conn("c4", "issue", "end"),
+            _conn("r1", "airworthiness", "start", reject=True),
+        ],
+        "Issues a certificate of conformity or an airworthiness release certificate. Both "
+        "had an Issued state that only a signatory could enter and NO action to reach it, "
+        "so the only way to issue either was a direct status change - on the two documents "
+        "whose entire purpose is to carry a signature. Found by a model invariant rather "
+        "than by a role agent, which is the point of having the invariant.",
     ),
 ]

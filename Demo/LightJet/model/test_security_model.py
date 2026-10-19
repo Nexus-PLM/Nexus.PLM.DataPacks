@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "seed"))
 
 import aviation_model as A                                            # noqa: E402
+import aviation_types as A_TYPES                                      # noqa: E402
 import build_customization as B                                      # noqa: E402
 
 # Every lifecycle the model declares, with a concrete type that uses it, so an invariant is
@@ -359,6 +360,71 @@ def test_every_state_is_reachable_and_every_live_state_has_a_way_out():
         leaves = {r["fromState"] for r in model["transitionRules"]}
         stuck = sorted(s for s in states if s not in leaves and s not in B.SETTLED_STATES)
         assert not stuck, f"{label}/{stem}: live states with no way out: {stuck}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The routes a record travels
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_every_declared_action_names_a_workflow_the_package_ships():
+    """An action pointing at a workflow that is not in the package answers 422
+    no_workflow_bound, and the object is then frozen: a manufacturing engineer could
+    neither submit a process specification for approval nor revise it, and every declared
+    action failed the same way (NI-00000567, NI-00000689). The type looked perfectly
+    configured - it HAD actions - which is why nobody noticed until somebody tried to use
+    one."""
+    shipped = {w["id"] for w in A.WORKFLOWS}
+    for definition in A_TYPES.ALL_TYPES:
+        for act in definition.get("actions") or []:
+            assert act["workflowDefinitionId"] in shipped, \
+                f"{definition['typeName']}: action {act['name']!r} names workflow " \
+                f"{act['workflowDefinitionId']} which the package does not ship"
+
+
+def test_every_type_that_has_a_settled_state_has_a_way_to_reach_it():
+    """A lifecycle whose approved state can only be entered by a signatory, on a type with
+    no action to start a route, is a record that can never be approved by anybody except
+    through a direct status change - which is the bare status flip NI-00000567 objected to.
+    """
+    actioned = {d["typeName"] for d in A_TYPES.ALL_TYPES if d.get("actions")}
+    for label, stem, states, _model in models():
+        if not (B.SIGNATORY_STATES & set(states)):
+            continue
+        name = B.BASE + stem
+        assert name in actioned, \
+            f"{label}/{stem}: has an approved state but no action to start a route to it, " \
+            "so the only way in is a direct status change"
+
+
+def test_every_approval_gate_states_what_it_is_asking():
+    """A task arrived as a title, a null instruction and two buttons, so an approver was
+    asked to approve something without being told what approving it would do - and on a
+    release gate what it does is let aeroplanes be built to the data (NI-00000586). The
+    Engine puts a node's Parameters["instruction"] on every task it creates and into the
+    notification body, so the question only has to be written down."""
+    for workflow in A.WORKFLOWS:
+        for node in workflow["definition"]["Nodes"]:
+            if node["NodeType"] != "Approver":
+                continue
+            instruction = (node.get("Parameters") or {}).get("instruction")
+            assert instruction and len(instruction) > 40, \
+                f"{workflow['name']}: gate {node['Title']!r} does not say what it is asking"
+
+
+def test_no_approval_gate_is_addressed_to_nobody():
+    """An approver node naming no user, group or role creates no task at all, so the
+    workflow waits for ever on work nobody was given. The out-of-the-box change gates ship
+    addressed to a single administrator account for exactly this reason - a payload cannot
+    know a site's group names - but a SITE's own workflows have no such excuse
+    (NI-00000724, NI-00000720)."""
+    for workflow in A.WORKFLOWS:
+        for node in workflow["definition"]["Nodes"]:
+            if node["NodeType"] != "Approver":
+                continue
+            named = (node.get("ApproverUserIds") or []) + (node.get("ApproverGroupIds") or []) \
+                + (node.get("ApproverRoleIds") or [])
+            assert named, \
+                f"{workflow['name']}: gate {node['Title']!r} is addressed to nobody"
 
 
 def main() -> int:
