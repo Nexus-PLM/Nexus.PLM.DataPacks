@@ -63,9 +63,19 @@ HOLDER_ATTRIBUTE = {
 # For the types that name nobody: the role that administers the record.
 OWNER_OF_LAST_RESORT = {"ECR": "h.okafor", "ECO": "h.okafor", "ECN": "h.okafor"}
 
-# States where refusing an edit is correct, so a failed probe there proves nothing.
+# States where refusing an edit is correct, so a failed probe there proves nothing. A
+# finished plan line is as closed as a released part: "Complete" is where most of this
+# dataset's WBS sits, and the first version of this probe read those six refusals as a
+# failure when they were the model working.
 LOCKED_STATES = {"Released", "Closed", "Cancelled", "Superseded", "Implemented",
-                 "Approved", "Rejected"}
+                 "Approved", "Rejected", "Complete", "Issued", "Effective",
+                 "Obsolete", "Void"}
+
+# Written back unchanged, so the probe proves the right to save without stating anything
+# new. The first version wrote `priority` back and hit a 400 instead - the loader had put
+# this dataset's own Low/Medium/High/Critical scale on types that declare P1..P4, which
+# fix_change_priorities.py repairs. A free-text attribute cannot fail that way.
+PROBE_ATTRIBUTES = ("title", "percentComplete", "problemStatement", "changeSummary")
 
 
 def say(text: str = "") -> None:
@@ -125,6 +135,27 @@ def plan_moves(me: Agent) -> tuple[list[dict], list[dict]]:
     return moves, unresolved
 
 
+def current_holdings(me: Agent) -> list[dict]:
+    """One object per owner, as the site stands, in the same shape `prove` reads."""
+    users = me.get("/api/users") or []
+    byid = {(u.get("userId") or u.get("id")): u.get("username") for u in users}
+    objs = me.get("/api/plmobjects?pageSize=3000") or []
+    rows = objs if isinstance(objs, list) else objs.get("items", [])
+
+    held = []
+    for o in rows:
+        type_name = str(o.get("typeName", ""))
+        if type_name not in HOLDER_ATTRIBUTE or o.get("isDeleted"):
+            continue
+        owner = byid.get(o.get("ownerId"))
+        if not owner or owner == LOADER:
+            continue
+        latest = me.get(f"/api/plmobjects/{o['plmObjectId']}/revisions/latest") or {}
+        held.append({"partNumber": o.get("partNumber"), "typeName": type_name,
+                     "status": latest.get("status"), "to": owner})
+    return held
+
+
 def prove(moves: list[dict]) -> int:
     """Edit one object per new owner, AS that owner. A refusal here is the real answer."""
     say("")
@@ -144,10 +175,15 @@ def prove(moves: list[dict]) -> int:
         user = Agent(username, role=username)
         pn = row["partNumber"]
         try:
-            before = (user.attributes(pn) or {}).get("priority")
-            user.set_attributes(pn, {"priority": before} if before else {"health": "Green"})
+            attrs = user.attributes(pn) or {}
+            key = next((k for k in PROBE_ATTRIBUTES if attrs.get(k) not in (None, "")), None)
+            if key is None:
+                say(f"  {username:<14} {row['typeName']:<14} {pn:<16} "
+                    f"nothing safe to write back, not probed")
+                continue
+            user.set_attributes(pn, {key: attrs[key]})
             say(f"  {username:<14} edits {row['typeName']:<14} {pn:<16} "
-                f"({row['status']})  OK")
+                f"({row['status']})  OK  [{key}]")
         except Refused as exc:
             bad += 1
             say(f"  {username:<14} edits {row['typeName']:<14} {pn:<16} "
@@ -161,10 +197,21 @@ def prove(moves: list[dict]) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--prove-only", action="store_true",
+                    help="skip the transfers and just check the result as the real users")
     args = ap.parse_args()
 
     me = admin_agent()
     moves, unresolved = plan_moves(me)
+
+    if args.prove_only:
+        # After the transfers there is nothing left to move, so the proof needs the
+        # intended owner rather than the planned change: who holds each object NOW.
+        held = current_holdings(me)
+        bad = prove(held)
+        say("")
+        say("all probes passed" if not bad else f"{bad} probe(s) refused")
+        return 1 if bad else 0
 
     tally: dict[str, int] = {}
     for row in moves:
