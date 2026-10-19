@@ -156,6 +156,16 @@ class Agent:
         return self._call("PATCH", path, json=body, **kw)
 
     def delete(self, path, **kw):
+        """Deletes. Present for verification probes that must clean up after themselves.
+
+        No agent calls this during the scenario: the roles report what they cannot do
+        rather than tidying the dataset, and a delete they were refused is a finding.
+        It exists so a check that has to CREATE something in order to prove creating
+        works can remove it again - see verify_wave4_live.py --create-probe - and for
+        the administrator's own dataset maintenance, where removing a stale record IS
+        the task: dedupe_material_links.py clears the duplicate way this dataset used
+        to say "made from".
+        """
         return self._call("DELETE", path, **kw)
 
     def log(self, action, detail, **extra):
