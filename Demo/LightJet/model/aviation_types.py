@@ -252,10 +252,14 @@ DOC_BASE_ATTRS = [
     # already declare one out of the box, so only the item and document trees need
     # it - and a title is worth having in the grids and in search regardless.
     a("title", "Title"),
-    a("issueDate", "Issue Date", kind="Date"),
+    # A signature, and the date it was given, belong to the revision that earned them.
+    # copyOnRevision defaults TRUE in the Engine, so revising a drawing used to carry
+    # checkedBy, approvedBy and issueDate onto the new issue - type design data born
+    # bearing an approval nobody had given it.
+    a("issueDate", "Issue Date", kind="Date", copy=False),
     a("authorName", "Author"),
-    a("checkedBy", "Checked By"),
-    a("approvedBy", "Approved By"),
+    a("checkedBy", "Checked By", copy=False),
+    a("approvedBy", "Approved By", copy=False),
     a("pageCount", "Pages", kind="Number"),
     a("retentionClass", "Retention Class", lov=RETENTION,
       default="Quality record - 7 years"),
@@ -1660,7 +1664,7 @@ CONCRETE_RECORD_TYPES = [
                   "Positive with life limit", "Negative margin - redesign required",
                   "Inconclusive - further work required"],
              required=True, default="Inconclusive - further work required"),
-           a("checkedBy", "Checked By"),
+           a("checkedBy", "Checked By", copy=False),
            a("independentCheckRequired", "Independent Check Required", kind="Bool",
              default=True),
        ]),
@@ -1696,8 +1700,8 @@ CONCRETE_RECORD_TYPES = [
            a("airworthinessImpact", "Airworthiness Impact", kind="Bool", default=False),
            a("customerApprovalRequired", "Customer Approval Required", kind="Bool",
              default=False),
-           a("approvedBy", "Approved By"),
-           a("approvalDate", "Approval Date", kind="Date"),
+           a("approvedBy", "Approved By", copy=False),
+           a("approvalDate", "Approval Date", kind="Date", copy=False),
            a("permanentFixRef", "Permanent Corrective Action"),
        ]),
 

@@ -35,6 +35,7 @@ import argparse
 import io
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).parent
@@ -129,9 +130,16 @@ def plan_moves(me: Agent) -> tuple[list[dict], list[dict]]:
                       "status": latest.get("status"), "from": was,
                       "to": holder, "toId": uid[holder]})
 
+    # NEVER overwrite the first backup. This script's own --prove-only re-plans before it
+    # probes, and the second pass wrote the owners AFTER the transfers over the record of
+    # the owners BEFORE them - which quietly destroyed the one thing that made the change
+    # reversible. A later pass goes to its own file.
     REPORTS.mkdir(parents=True, exist_ok=True)
-    io.open(REPORTS / "ootb-owners-backup.json", "w", encoding="utf-8").write(
-        json.dumps(backup, indent=1))
+    first = REPORTS / "ootb-owners-backup.json"
+    target = first if not first.exists() else REPORTS / (
+        "ootb-owners-"
+        + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + ".json")
+    io.open(target, "w", encoding="utf-8").write(json.dumps(backup, indent=1))
     return moves, unresolved
 
 
@@ -202,16 +210,16 @@ def main() -> int:
     args = ap.parse_args()
 
     me = admin_agent()
-    moves, unresolved = plan_moves(me)
 
     if args.prove_only:
         # After the transfers there is nothing left to move, so the proof needs the
         # intended owner rather than the planned change: who holds each object NOW.
-        held = current_holdings(me)
-        bad = prove(held)
+        bad = prove(current_holdings(me))
         say("")
         say("all probes passed" if not bad else f"{bad} probe(s) refused")
         return 1 if bad else 0
+
+    moves, unresolved = plan_moves(me)
 
     tally: dict[str, int] = {}
     for row in moves:
