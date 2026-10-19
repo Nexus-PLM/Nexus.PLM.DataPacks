@@ -1969,6 +1969,23 @@ REFERENCE_KIND_ATTRS = [
     a("reviewedAgainstRevision", "Reviewed Against Revision"),
 ]
 
+# A reference that carries a certification credit pins the revision it was granted against.
+#
+# `revisionRule` is declared on the out-of-the-box ReferenceLinkBase and defaults to
+# 'latest-released', so EVERY reference followed whichever revision happened to be released
+# at the time of reading - including on Accepted type design data. That is exactly backwards
+# for a compliance credit: the credit was granted against the revision that was examined, and
+# if that revision is superseded the credit has to go SUSPECT, not silently transfer to work
+# nobody has assessed. A test report that evidences compliance of revision A does not evidence
+# revision B (NI-00000604, NI-00000603).
+#
+# Overriding an inherited attribute replaces the ancestor's definition outright rather than
+# merging with it, so the list of values and the scope are restated here; losing the list would
+# make the field free text again, which is the defect the list exists to prevent.
+PINNED_REVISION_RULE = a(
+    "revisionRule", "Revision Rule", scope="Object", default="pinned",
+    lov=["latest", "latest-released", "pinned"])
+
 ABSTRACT_REFERENCE_BASE = ty(
     "ReferenceBase", "Light Speed Systems Reference Base",
     "Abstract base for the NX-200 programme's own reference kinds. Sits between the "
@@ -2001,7 +2018,7 @@ CONCRETE_REFERENCE_TYPES = [
        "so 14 of 23 compliance items named documents that do not exist and 8 of those were "
        "already Accepted - an evidence reference that cannot be resolved is not evidence "
        "(NI-00000569).",
-       t("ReferenceBase")),
+       t("ReferenceBase"), attributes=[PINNED_REVISION_RULE]),
 
     ty("DemonstratesComplianceOfLink", "Demonstrates Compliance Of",
        "The source compliance demonstration covers the target configuration - the item, "
@@ -2009,14 +2026,14 @@ CONCRETE_REFERENCE_TYPES = [
        "floated free of the aeroplane: nothing could answer 'which demonstrations does "
        "revising this part invalidate', which is the question a change board asks first "
        "(NI-00000564, NI-00000730).",
-       t("ReferenceBase")),
+       t("ReferenceBase"), attributes=[PINNED_REVISION_RULE]),
 
     ty("TestedConfigurationLink", "Tested Configuration",
        "The target is the exact item revision the source test was run on. A test report "
        "that cannot name its configuration as data cannot have its credit checked when the "
        "configuration changes, which is how a withdrawn credit goes unnoticed "
        "(NI-00000524).",
-       t("ReferenceBase")),
+       t("ReferenceBase"), attributes=[PINNED_REVISION_RULE]),
 
     ty("GovernsApplicationOfLink", "Governs Application Of",
        "The source process specification controls how the target material or consumable is "
@@ -2029,7 +2046,7 @@ CONCRETE_REFERENCE_TYPES = [
        "The source first article inspection report is the first article for the target part "
        "revision. The FAI referenced its part by free text, so 'has this part had its "
        "first article' could not be answered from the data (NI-00000534).",
-       t("ReferenceBase")),
+       t("ReferenceBase"), attributes=[PINNED_REVISION_RULE]),
 
     ty("EmbodiedByLink", "Embodied By",
        "The target part revision is what the source service bulletin instructs an operator "
@@ -2042,7 +2059,7 @@ CONCRETE_REFERENCE_TYPES = [
        "The target structural substantiation shows that the source item meets its strength, "
        "fatigue and damage-tolerance requirements. A substantiation that cannot be pointed "
        "at from the part it substantiates is unverifiable free text (NI-00000577).",
-       t("ReferenceBase")),
+       t("ReferenceBase"), attributes=[PINNED_REVISION_RULE]),
 
     ty("FittedToLink", "Fitted To",
        "The source serialised unit is installed on the target airframe. This is what makes "

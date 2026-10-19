@@ -40,6 +40,16 @@ LIFECYCLES = [
 GROUP_NAMES = {name for name, _description in A.GROUPS}
 
 
+# The reference kinds that carry a certification credit: the link IS the credit, so it pins
+# the revision it was granted against. The operational kinds (affected item, affected unit,
+# fitted to, occurrence on, governs application of, embodied by, regulatory basis) describe a
+# live relationship and correctly follow the current revision.
+CREDIT_BEARING_KINDS = {
+    "EvidenceForLink", "DemonstratesComplianceOfLink", "TestedConfigurationLink",
+    "FirstArticleOfLink", "SubstantiatedByLink",
+}
+
+
 def models():
     """Every (label, stem, states, built model) the model declares.
 
@@ -476,6 +486,39 @@ def test_no_approval_gate_is_addressed_to_nobody():
                 + (node.get("ApproverRoleIds") or [])
             assert named, \
                 f"{workflow['name']}: gate {node['Title']!r} is addressed to nobody"
+
+
+def test_a_certification_credit_pins_the_revision_it_was_granted_against():
+    """`revisionRule` is declared on the out-of-the-box ReferenceLinkBase and defaults to
+    'latest-released', so every reference followed whichever revision happened to be released
+    at the time of reading - including on Accepted type design data.
+
+    That is backwards for a compliance credit. The credit was granted against the revision
+    that was examined, and if that revision is superseded the credit has to go SUSPECT rather
+    than silently transfer to work nobody has assessed: a test report evidencing compliance of
+    revision A does not evidence revision B (NI-00000604, NI-00000603).
+
+    Overriding an inherited attribute replaces the ancestor's definition outright, so this
+    also checks the list of values survived the override - losing it would make the field free
+    text again, which is the defect the list exists to prevent."""
+    for definition in A_TYPES.CONCRETE_REFERENCE_TYPES:
+        stem = definition["typeName"].replace(B.BASE, "", 1)
+        if stem not in CREDIT_BEARING_KINDS:
+            continue
+        rule = [x for x in definition["attributes"] if x["name"] == "revisionRule"]
+        assert rule, f"{stem}: carries a certification credit but does not pin a revision"
+        assert rule[0].get("defaultValue") == "pinned",             f"{stem}: defaults to {rule[0].get('defaultValue')!r}, not 'pinned'"
+        assert "pinned" in (rule[0].get("lov") or []),             f"{stem}: the override dropped the list of values, so the field is free text again"
+
+
+def test_every_reference_kind_can_record_whether_it_was_reviewed():
+    """A link is suspect when one end has moved on since it was reviewed. Nothing computes
+    that yet, but it cannot even be RECORDED without somewhere to put it, and a review
+    identity is what makes "we looked at this" different from "nobody has looked"
+    (NI-00000485, NI-00000525, NI-00000712)."""
+    declared = {x["name"] for x in A_TYPES.REFERENCE_KIND_ATTRS}
+    for needed in ("reviewStatus", "reviewedBy", "reviewedOn", "reviewedAgainstRevision"):
+        assert needed in declared, f"reference kinds cannot record {needed}"
 
 
 def main() -> int:
