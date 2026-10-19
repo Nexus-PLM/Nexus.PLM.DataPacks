@@ -1,0 +1,6 @@
+build/
+__pycache__/
+*.pyc
+verify/bin/
+verify/obj/
+agents/reports/
