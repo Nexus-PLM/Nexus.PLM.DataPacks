@@ -40,6 +40,11 @@ ENGINE = os.environ.get("NEXUS_ENGINE", "https://192.168.1.47:5000")
 VAULT = os.environ.get("NEXUS_VAULT", "https://192.168.1.47:5200")
 PASSWORD = os.environ.get("NEXUS_DEMO_PASSWORD", "Nexus2025!")
 
+# The administrator is a different matter from the nine demo logins: it can change the
+# type model and every object on the site, so its password is never written down here.
+# NEXUS_ADMIN_PASSWORD, or `admin_agent()` asks for it.
+ADMIN_USERNAME = os.environ.get("NEXUS_ADMIN_USERNAME", "admin")
+
 HERE = Path(__file__).parent
 BUG_LOG = Path(os.environ.get("NEXUS_BUG_LOG", HERE / "reports" / "bugs.jsonl"))
 ACTIVITY_LOG = Path(os.environ.get("NEXUS_ACTIVITY_LOG",
@@ -56,6 +61,25 @@ MESSAGE_LIMIT = 900
 # earns more room. Still capped: beyond this it belongs on the object as a finding or a
 # note, where it can be navigated to and where it survives the thread.
 FORMAL_MESSAGE_LIMIT = 2500
+
+
+def admin_agent(role: str = "PLM Administrator") -> "Agent":
+    """The administrator, whose password comes from the environment or from a prompt.
+
+    Dataset maintenance - transferring ownership, clearing a stale reference, re-deriving
+    a calculated value - is done as the administrator because most of this dataset is
+    Released and correctly refuses an engineer's edit. That is the same act as loading it,
+    not a role doing its job, so it is deliberately a little awkward: nothing in this
+    repository stores the password, and a script that wants it has to be run by somebody
+    who has it.
+    """
+    secret = os.environ.get("NEXUS_ADMIN_PASSWORD")
+    if not secret:
+        import getpass
+        secret = getpass.getpass(f"{ADMIN_USERNAME} password: ")
+    if not secret:
+        raise SystemExit("No administrator password. Set NEXUS_ADMIN_PASSWORD and re-run.")
+    return Agent(ADMIN_USERNAME, password=secret, role=role)
 
 
 class Refused(Exception):
@@ -130,6 +154,9 @@ class Agent:
 
     def patch(self, path, body, **kw):
         return self._call("PATCH", path, json=body, **kw)
+
+    def delete(self, path, **kw):
+        return self._call("DELETE", path, **kw)
 
     def log(self, action, detail, **extra):
         """Record what this agent did, so the administrator can read the run back."""
