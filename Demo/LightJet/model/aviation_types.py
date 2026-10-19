@@ -244,10 +244,21 @@ NON_TYPE_DESIGN_DOC_ATTRS = [
            "Airworthiness"]),
     a("auditEvidence", "Audit Evidence", kind="Bool", default=True),
     a("objectiveEvidenceRefs", "Objective Evidence References"),
-    # How the record closed, in one phrase. Derived from the field that already holds the
-    # outcome - the MRB disposition, the first article result, the approval status - so
-    # the board can show it without anyone keeping two fields in step by hand.
-    a("resolution", "Outcome"),
+    # There is deliberately no generic `resolution` field here any more.
+    #
+    # It used to be declared as a one-phrase summary "derived from the field that already
+    # holds the outcome - the MRB disposition, the first article result, the approval
+    # status - so the board can show it without anyone keeping two fields in step by hand".
+    # Nothing derived it. What shipped was a second, independently writable field for one
+    # decision, with nothing saying which of the two was authoritative: a nonconformance
+    # carried both `resolution` and `mrbDisposition`, a first article both `resolution` and
+    # `faiResult`, and an auditor reading one had no way to know the other disagreed
+    # (NI-00000732, NI-00000601).
+    #
+    # The type-specific field is the authoritative one, because it is the one with a closed
+    # list of the dispositions that type can actually reach. A derived summary needs a
+    # derivation mechanism the product does not have; declaring the intent and not building
+    # it is what caused the defect.
 ]
 
 
