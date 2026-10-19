@@ -1338,10 +1338,20 @@ REQ_AVIATION_ATTRS = [
       lov=["Not allocated", "Allocated", "Partially allocated",
            "Over-allocated", "Allocation not required"],
       default="Not allocated"),
+    # "Verification suspect" is the value the list was missing. A requirement verified
+    # against a configuration that has since changed is neither Verified nor Verification
+    # failed: the verification WAS valid and a change invalidated it, which is a different
+    # fact and the one a certification review has to see. With no value for it the status
+    # stayed "Verified" and the reason went into free text, so a withdrawn credit was
+    # invisible (NI-00000630, NI-00000740).
     a("verificationStatus", "Verification Status",
       lov=["Not verified", "Verification planned", "In verification",
-           "Verified", "Verification failed", "Verification waived"],
+           "Verified", "Verification suspect - configuration changed",
+           "Verification failed", "Verification waived"],
       default="Not verified"),
+    # Why the status is what it is, and against what. Kept separate from the requirement
+    # text, which is the requirement and not a commentary on its verification.
+    a("verificationStatusReason", "Verification Status Reason", scope="Revision"),
     a("verificationEvidenceRef", "Verification Evidence"),
     a("certificationCredit", "Claimed for Certification Credit", kind="Bool",
       default=False),
