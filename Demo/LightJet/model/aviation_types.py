@@ -244,10 +244,21 @@ NON_TYPE_DESIGN_DOC_ATTRS = [
            "Airworthiness"]),
     a("auditEvidence", "Audit Evidence", kind="Bool", default=True),
     a("objectiveEvidenceRefs", "Objective Evidence References"),
-    # How the record closed, in one phrase. Derived from the field that already holds the
-    # outcome - the MRB disposition, the first article result, the approval status - so
-    # the board can show it without anyone keeping two fields in step by hand.
-    a("resolution", "Outcome"),
+    # There is deliberately no generic `resolution` field here any more.
+    #
+    # It used to be declared as a one-phrase summary "derived from the field that already
+    # holds the outcome - the MRB disposition, the first article result, the approval
+    # status - so the board can show it without anyone keeping two fields in step by hand".
+    # Nothing derived it. What shipped was a second, independently writable field for one
+    # decision, with nothing saying which of the two was authoritative: a nonconformance
+    # carried both `resolution` and `mrbDisposition`, a first article both `resolution` and
+    # `faiResult`, and an auditor reading one had no way to know the other disagreed
+    # (NI-00000732, NI-00000601).
+    #
+    # The type-specific field is the authoritative one, because it is the one with a closed
+    # list of the dispositions that type can actually reach. A derived summary needs a
+    # derivation mechanism the product does not have; declaring the intent and not building
+    # it is what caused the defect.
 ]
 
 
@@ -1327,10 +1338,20 @@ REQ_AVIATION_ATTRS = [
       lov=["Not allocated", "Allocated", "Partially allocated",
            "Over-allocated", "Allocation not required"],
       default="Not allocated"),
+    # "Verification suspect" is the value the list was missing. A requirement verified
+    # against a configuration that has since changed is neither Verified nor Verification
+    # failed: the verification WAS valid and a change invalidated it, which is a different
+    # fact and the one a certification review has to see. With no value for it the status
+    # stayed "Verified" and the reason went into free text, so a withdrawn credit was
+    # invisible (NI-00000630, NI-00000740).
     a("verificationStatus", "Verification Status",
       lov=["Not verified", "Verification planned", "In verification",
-           "Verified", "Verification failed", "Verification waived"],
+           "Verified", "Verification suspect - configuration changed",
+           "Verification failed", "Verification waived"],
       default="Not verified"),
+    # Why the status is what it is, and against what. Kept separate from the requirement
+    # text, which is the requirement and not a commentary on its verification.
+    a("verificationStatusReason", "Verification Status Reason", scope="Revision"),
     a("verificationEvidenceRef", "Verification Evidence"),
     a("certificationCredit", "Claimed for Certification Credit", kind="Bool",
       default=False),
@@ -1969,6 +1990,23 @@ REFERENCE_KIND_ATTRS = [
     a("reviewedAgainstRevision", "Reviewed Against Revision"),
 ]
 
+# A reference that carries a certification credit pins the revision it was granted against.
+#
+# `revisionRule` is declared on the out-of-the-box ReferenceLinkBase and defaults to
+# 'latest-released', so EVERY reference followed whichever revision happened to be released
+# at the time of reading - including on Accepted type design data. That is exactly backwards
+# for a compliance credit: the credit was granted against the revision that was examined, and
+# if that revision is superseded the credit has to go SUSPECT, not silently transfer to work
+# nobody has assessed. A test report that evidences compliance of revision A does not evidence
+# revision B (NI-00000604, NI-00000603).
+#
+# Overriding an inherited attribute replaces the ancestor's definition outright rather than
+# merging with it, so the list of values and the scope are restated here; losing the list would
+# make the field free text again, which is the defect the list exists to prevent.
+PINNED_REVISION_RULE = a(
+    "revisionRule", "Revision Rule", scope="Object", default="pinned",
+    lov=["latest", "latest-released", "pinned"])
+
 ABSTRACT_REFERENCE_BASE = ty(
     "ReferenceBase", "Light Speed Systems Reference Base",
     "Abstract base for the NX-200 programme's own reference kinds. Sits between the "
@@ -2001,7 +2039,7 @@ CONCRETE_REFERENCE_TYPES = [
        "so 14 of 23 compliance items named documents that do not exist and 8 of those were "
        "already Accepted - an evidence reference that cannot be resolved is not evidence "
        "(NI-00000569).",
-       t("ReferenceBase")),
+       t("ReferenceBase"), attributes=[PINNED_REVISION_RULE]),
 
     ty("DemonstratesComplianceOfLink", "Demonstrates Compliance Of",
        "The source compliance demonstration covers the target configuration - the item, "
@@ -2009,14 +2047,14 @@ CONCRETE_REFERENCE_TYPES = [
        "floated free of the aeroplane: nothing could answer 'which demonstrations does "
        "revising this part invalidate', which is the question a change board asks first "
        "(NI-00000564, NI-00000730).",
-       t("ReferenceBase")),
+       t("ReferenceBase"), attributes=[PINNED_REVISION_RULE]),
 
     ty("TestedConfigurationLink", "Tested Configuration",
        "The target is the exact item revision the source test was run on. A test report "
        "that cannot name its configuration as data cannot have its credit checked when the "
        "configuration changes, which is how a withdrawn credit goes unnoticed "
        "(NI-00000524).",
-       t("ReferenceBase")),
+       t("ReferenceBase"), attributes=[PINNED_REVISION_RULE]),
 
     ty("GovernsApplicationOfLink", "Governs Application Of",
        "The source process specification controls how the target material or consumable is "
@@ -2029,7 +2067,7 @@ CONCRETE_REFERENCE_TYPES = [
        "The source first article inspection report is the first article for the target part "
        "revision. The FAI referenced its part by free text, so 'has this part had its "
        "first article' could not be answered from the data (NI-00000534).",
-       t("ReferenceBase")),
+       t("ReferenceBase"), attributes=[PINNED_REVISION_RULE]),
 
     ty("EmbodiedByLink", "Embodied By",
        "The target part revision is what the source service bulletin instructs an operator "
@@ -2042,7 +2080,7 @@ CONCRETE_REFERENCE_TYPES = [
        "The target structural substantiation shows that the source item meets its strength, "
        "fatigue and damage-tolerance requirements. A substantiation that cannot be pointed "
        "at from the part it substantiates is unverifiable free text (NI-00000577).",
-       t("ReferenceBase")),
+       t("ReferenceBase"), attributes=[PINNED_REVISION_RULE]),
 
     ty("FittedToLink", "Fitted To",
        "The source serialised unit is installed on the target airframe. This is what makes "

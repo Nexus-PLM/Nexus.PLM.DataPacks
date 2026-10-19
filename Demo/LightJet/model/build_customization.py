@@ -306,6 +306,11 @@ AUTHORITY_SCOPE = {"ComplianceReport", "QualTestPlan", "QualTestReport", "Safety
                    # the person who agreed it.
                    "AirworthinessLimitation"}
 
+# The types the authority AUTHORS rather than judges. A DER reads the evidence in her
+# delegation and writes nothing in it - the one instrument she raises herself is the
+# finding, and a finding she cannot create is not an instrument at all.
+AUTHORITY_RAISES = {"CertificationFinding"}
+
 # The state a finding re-opens an accepted demonstration into.
 FINDING_STATE = "Finding Open"
 
@@ -337,13 +342,32 @@ def security_model(stem: str, state_names: list[str]) -> dict:
     Everyone may see and read, except on the export-restricted types. The owning group may
     edit anything of its own family while the revision is in a working state. A released or
     issued revision is read-only for everyone but an administrator, which is the rule that
-    makes a release mean something. `canCreate` is never true anywhere: the first true on
-    the site flips object creation to an allowlist for every type at once.
+    makes a release mean something.
+
+    `canCreate` names the groups that author the type. It used to be False on every row,
+    because the Engine read "no row grants create" as "nobody has configured create, so
+    anyone may" - so a policy that denied creation to everybody granted it to the whole
+    site, and a project manager in no engineering group could author and delete type design
+    data (NI-00000742, NI-00000699, NI-00000643, NI-00000691). A configured policy is now
+    the answer, so these rows can say what they mean.
     """
     owner_group = OWNING_GROUP.get(stem)
     restricted = stem in EXPORT_RESTRICTED
     retained = stem in RETAINED_FOR_LIFE
     rows: list[dict] = []
+
+    # Create is a type-level right: it is asked before any object exists, so no state and no
+    # ownership can qualify it. It belongs to the groups that author the type - the owning
+    # group and the contributors who edit it in a working state - and to the authority for
+    # the one type that is the authority's own instrument. Not to the wildcard, which is
+    # what "a supply-chain user may create type design data" was.
+    authors: set[str] = {f"group:{owner_group}"} if owner_group else set()
+    authors |= {f"group:{group}" for group in CONTRIBUTING_GROUPS.get(stem, [])}
+    if stem in AUTHORITY_RAISES:
+        authors.add(f"group:{AUTHORITY_GROUP}")
+
+    def may_create(subject: str) -> bool:
+        return subject in authors
 
     # The rules come first, because `canTransition` has to agree with them. Where the two
     # disagreed, GET /permissions advertised a power the site would then refuse, and a
@@ -376,7 +400,8 @@ def security_model(stem: str, state_names: list[str]) -> dict:
         if owner_group:
             rows.append({
                 "stateName": state, "subjectType": "group", "subjectName": owner_group,
-                "canView": True, "canRead": True, "canCreate": False,
+                "canView": True, "canRead": True,
+                "canCreate": may_create(f"group:{owner_group}"),
                 "editScope": "None" if locked else "Any",
                 "deleteScope": any_delete,
                 # The owning group used to carry canTransition in EVERY state, approval
@@ -395,7 +420,8 @@ def security_model(stem: str, state_names: list[str]) -> dict:
                 continue
             rows.append({
                 "stateName": state, "subjectType": "group", "subjectName": group,
-                "canView": True, "canRead": True, "canCreate": False,
+                "canView": True, "canRead": True,
+                "canCreate": may_create(f"group:{group}"),
                 "editScope": "None" if locked else "Any",
                 "deleteScope": "None",
                 "canTransition": False, "canDownload": True,
@@ -407,8 +433,18 @@ def security_model(stem: str, state_names: list[str]) -> dict:
         if stem in AUTHORITY_SCOPE:
             rows.append({
                 "stateName": state, "subjectType": "group", "subjectName": AUTHORITY_GROUP,
-                "canView": True, "canRead": True, "canCreate": False,
-                "editScope": "Any" if state == FINDING_STATE else "None",
+                "canView": True, "canRead": True,
+                "canCreate": may_create(f"group:{AUTHORITY_GROUP}"),
+                # On a type the authority RAISES, the authority is the author and works on
+                # it in a working state exactly as an owning group does. FINDING_STATE is a
+                # state on the compliance ITEMS a finding re-opens ("Finding Open"), not a
+                # state of the finding itself - whose states are Open, Under Review,
+                # Dispositioned, Closed and Void - so judging this type by it gave the DER
+                # edit None in all five, and she could raise a finding and then never touch
+                # it. Everywhere else the original rule stands: a DER approves data, she
+                # does not edit it, and she writes only where a finding re-opens the item.
+                "editScope": ("None" if locked else "Any") if stem in AUTHORITY_RAISES
+                             else ("Any" if state == FINDING_STATE else "None"),
                 "deleteScope": "None",
                 "canTransition": may_move(state, f"group:{AUTHORITY_GROUP}"),
                 "canDownload": True,
@@ -419,7 +455,8 @@ def security_model(stem: str, state_names: list[str]) -> dict:
         rows.append({
             "stateName": state, "subjectType": "group",
             "subjectName": "LSS Airworthiness and Certification",
-            "canView": True, "canRead": True, "canCreate": False,
+            "canView": True, "canRead": True,
+            "canCreate": may_create("group:LSS Airworthiness and Certification"),
             # Same exception as the authority above, and for the same reason: an
             # airworthiness finding against its own acceptance has to land somewhere.
             "editScope": "Any" if state == FINDING_STATE else "None",
@@ -429,7 +466,7 @@ def security_model(stem: str, state_names: list[str]) -> dict:
         })
         rows.append({
             "stateName": state, "subjectType": "role", "subjectName": "Admin",
-            "canView": True, "canRead": True, "canCreate": False,
+            "canView": True, "canRead": True, "canCreate": True,
             "editScope": "Any", "deleteScope": "Any",
             "canTransition": may_move(state, "role:Admin"),
             "canDownload": True,
@@ -586,6 +623,22 @@ def transition_rules(state_names: list[str], owner_group: str | None) -> list[di
             gate_index = state_names.index(approved) - 1
             if gate_index >= 0 and state_names[gate_index] == state:
                 allow(state, approved, signatory)
+
+        # At the gate itself, the signatory and the authority may also RETURN the submission
+        # with a finding, not only accept it or send it back for more work.
+        #
+        # From a state awaiting a decision there were exactly two routes: forward to the
+        # approved state, and back a step for rework. So the one thing a certification
+        # reviewer most needs to do at the point of acceptance - object, on the record - had
+        # nowhere to land: "accept" was available and "return with a finding" was not, and
+        # sending the item back to Evidence in Work says "do more work" rather than "the
+        # authority has an objection of record" (NI-00000557).
+        #
+        # This is the same act, and the same reasoning, as the finding against an ALREADY
+        # accepted demonstration a few lines above. Objecting before signing should not be
+        # harder than objecting afterwards.
+        if state in AWAITING_DECISION and FINDING_STATE in state_names:
+            allow(state, FINDING_STATE, f"{signatory}, group:{AUTHORITY_GROUP}")
 
         # Retiring something that was never approved is still a signatory act, and there
         # was no route for it at all: the working branch skipped a retired neighbour as
@@ -1080,7 +1133,7 @@ Contains:
     supplier approval and the out-of-the-box ECR type.
   * One security model per concrete type: released revisions are read-only to everyone but
     an administrator, the owning group edits its own family, airworthiness can always read
-    type design data, and canCreate is false everywhere.
+    type design data, and creation is granted to the groups that author each type.
 
 No business objects, user accounts or numbering counters travel in a customization set. The
 companion seed loader creates those against the Engine API.

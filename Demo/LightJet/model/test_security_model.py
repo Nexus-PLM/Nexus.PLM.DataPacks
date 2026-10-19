@@ -40,6 +40,16 @@ LIFECYCLES = [
 GROUP_NAMES = {name for name, _description in A.GROUPS}
 
 
+# The reference kinds that carry a certification credit: the link IS the credit, so it pins
+# the revision it was granted against. The operational kinds (affected item, affected unit,
+# fitted to, occurrence on, governs application of, embodied by, regulatory basis) describe a
+# live relationship and correctly follow the current revision.
+CREDIT_BEARING_KINDS = {
+    "EvidenceForLink", "DemonstratesComplianceOfLink", "TestedConfigurationLink",
+    "FirstArticleOfLink", "SubstantiatedByLink",
+}
+
+
 def models():
     """Every (label, stem, states, built model) the model declares.
 
@@ -138,14 +148,59 @@ def test_every_group_can_reach_at_least_one_project():
 # What the rows grant
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_no_row_anywhere_grants_create():
-    """The first `canCreate: true` on a site turns creation into an allowlist for EVERY
-    type at once, so one well-meant grant takes create away from every role that has no
-    row. The model has always said this; nothing enforced it."""
+def test_create_is_granted_to_somebody_on_every_type():
+    """A policy that grants create to nobody now means nobody but an administrator may
+    create one, so a type whose rows are all false is a type the demo cannot author.
+
+    This invariant is the inverse of the one it replaces. `canCreate` used to be false on
+    every row of every type on purpose, because the Engine read "no row grants create" as
+    "create is unconfigured, so anyone may" - so the safe-looking configuration was the one
+    that granted creation to the entire site, and a project manager in no engineering group
+    could author type design data (NI-00000742, NI-00000699, NI-00000643, NI-00000691).
+    With a configured policy now answering the question, all-false denies everyone."""
+    for label, stem, _states, model in models():
+        granted = {subject(row) for row in model["statePermissions"] if row["canCreate"]}
+        assert granted, f"{label}/{stem}: no row grants create, so nobody may author one"
+
+
+def test_create_is_never_granted_to_the_wildcard():
+    """Create by account type alone was the finding: a supply-chain user could create type
+    design data because every account type matched the wildcard row (NI-00000691). Create
+    belongs to the groups that author the type, so the wildcard must never carry it."""
     for label, stem, _states, model in models():
         for row in model["statePermissions"]:
-            assert row["canCreate"] is False, \
-                f"{label}/{stem}: {subject(row)} grants create in {row['stateName']}"
+            if row["subjectType"] == "*":
+                assert row["canCreate"] is False, \
+                    f"{label}/{stem}: the wildcard grants create in {row['stateName']}"
+
+
+def test_create_is_granted_only_to_groups_that_may_edit_the_type():
+    """Whoever may create one must be able to work on it afterwards, or the create leaves
+    an object its author cannot touch - and an author who cannot edit is how
+    "a user can create an object and then cannot delete it" happens (NI-00000683).
+
+    An administrator is exempt: the role carries edit Any in every state anyway."""
+    for label, stem, _states, model in models():
+        editors = {subject(row) for row in model["statePermissions"]
+                   if row["editScope"] in ("Own", "Any")}
+        for row in model["statePermissions"]:
+            if not row["canCreate"] or row["subjectType"] == "role":
+                continue
+            assert subject(row) in editors, \
+                f"{label}/{stem}: {subject(row)} may create one but may never edit it"
+
+
+def test_create_is_consistent_across_the_states_of_a_type():
+    """Create is asked before any object exists, so no state can qualify it. A subject
+    granted create in one state and refused it in another is a policy that cannot be read:
+    the Engine takes the first grant it finds, so the quiet row is the one that is wrong."""
+    for label, stem, _states, model in models():
+        answers: dict[str, set[bool]] = {}
+        for row in model["statePermissions"]:
+            answers.setdefault(subject(row), set()).add(bool(row["canCreate"]))
+        for who, values in answers.items():
+            assert len(values) == 1, \
+                f"{label}/{stem}: {who} both may and may not create, depending on the state"
 
 
 def test_a_locked_state_grants_edit_to_nobody_but_admin_and_a_finding():
@@ -220,7 +275,13 @@ def test_the_delegated_authority_can_read_its_scope_and_write_only_a_finding():
             row = rows[0]
             assert row["canRead"] and row["canDownload"], \
                 f"{stem}/{state}: the authority cannot read the evidence it judges"
-            expected = "Any" if state == B.FINDING_STATE else "None"
+            # On the one type the authority RAISES, it is the author and edits in a working
+            # state like any owning group. On everything else in its delegation it approves
+            # data rather than editing it, and writes only where a finding re-opens the item.
+            if stem in B.AUTHORITY_RAISES:
+                expected = "None" if state in B.RELEASE_LOCKED else "Any"
+            else:
+                expected = "Any" if state == B.FINDING_STATE else "None"
             assert row["editScope"] == expected, \
                 f"{stem}/{state}: the authority's edit is {row['editScope']}, " \
                 f"expected {expected}"
@@ -425,6 +486,61 @@ def test_no_approval_gate_is_addressed_to_nobody():
                 + (node.get("ApproverRoleIds") or [])
             assert named, \
                 f"{workflow['name']}: gate {node['Title']!r} is addressed to nobody"
+
+
+def test_a_certification_credit_pins_the_revision_it_was_granted_against():
+    """`revisionRule` is declared on the out-of-the-box ReferenceLinkBase and defaults to
+    'latest-released', so every reference followed whichever revision happened to be released
+    at the time of reading - including on Accepted type design data.
+
+    That is backwards for a compliance credit. The credit was granted against the revision
+    that was examined, and if that revision is superseded the credit has to go SUSPECT rather
+    than silently transfer to work nobody has assessed: a test report evidencing compliance of
+    revision A does not evidence revision B (NI-00000604, NI-00000603).
+
+    Overriding an inherited attribute replaces the ancestor's definition outright, so this
+    also checks the list of values survived the override - losing it would make the field free
+    text again, which is the defect the list exists to prevent."""
+    for definition in A_TYPES.CONCRETE_REFERENCE_TYPES:
+        stem = definition["typeName"].replace(B.BASE, "", 1)
+        if stem not in CREDIT_BEARING_KINDS:
+            continue
+        rule = [x for x in definition["attributes"] if x["name"] == "revisionRule"]
+        assert rule, f"{stem}: carries a certification credit but does not pin a revision"
+        assert rule[0].get("defaultValue") == "pinned",             f"{stem}: defaults to {rule[0].get('defaultValue')!r}, not 'pinned'"
+        assert "pinned" in (rule[0].get("lov") or []),             f"{stem}: the override dropped the list of values, so the field is free text again"
+
+
+def test_every_reference_kind_can_record_whether_it_was_reviewed():
+    """A link is suspect when one end has moved on since it was reviewed. Nothing computes
+    that yet, but it cannot even be RECORDED without somewhere to put it, and a review
+    identity is what makes "we looked at this" different from "nobody has looked"
+    (NI-00000485, NI-00000525, NI-00000712)."""
+    declared = {x["name"] for x in A_TYPES.REFERENCE_KIND_ATTRS}
+    for needed in ("reviewStatus", "reviewedBy", "reviewedOn", "reviewedAgainstRevision"):
+        assert needed in declared, f"reference kinds cannot record {needed}"
+
+
+def test_a_submission_can_be_returned_with_a_finding_not_only_accepted():
+    """From a state awaiting a decision there were exactly two routes: forward to the
+    approved state, and back a step for rework. So the one thing a certification reviewer
+    most needs to do at the point of acceptance - object, on the record - had nowhere to
+    land. "Accept" was available and "return with a finding" was not, and sending the item
+    back to Evidence in Work says "do more work" rather than "the authority has an
+    objection of record" (NI-00000557).
+
+    The same act, and the same reasoning, as the finding against an already accepted
+    demonstration: objecting BEFORE signing should not be harder than objecting after."""
+    for label, stem, states, model in models():
+        gates = B.AWAITING_DECISION & set(states)
+        if not gates or B.FINDING_STATE not in states:
+            continue
+        rules = {(r["fromState"], r["toState"]): r["allowedRoles"]
+                 for r in B.transition_rules(states, B.OWNING_GROUP.get(stem))}
+        for gate in gates:
+            who = rules.get((gate, B.FINDING_STATE))
+            assert who,                 f"{label}/{stem}: {gate} can be accepted but not returned with a finding"
+            assert B.AUTHORITY_GROUP in who,                 f"{label}/{stem}: the authority cannot raise a finding from {gate}"
 
 
 def main() -> int:
