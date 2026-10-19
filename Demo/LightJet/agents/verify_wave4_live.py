@@ -1,6 +1,7 @@
 """Verifies the wave-4 fixes against the RUNNING Engine, as real users.
 
     python verify_wave4_live.py
+    python verify_wave4_live.py --create-probe   # also proves a create still works
 
 A commit on `next` is not the running binary, and a board card that says "fixed" on the
 strength of a merge is a rumour. Each check below names the card it settles and asserts the
@@ -15,10 +16,18 @@ The one exception is the attribute-contract group, which needs an object the act
 genuinely edit - otherwise a 403 would be mistaken for the contract refusing the value.
 LSS-21-0014 revision B is In Work and m.sandoval's group holds edit-Any on it, confirmed
 through /api/security/inspect, so a 400 from these probes is the contract and nothing else.
+
+`--create-probe` adds the check that refusal-only testing cannot make. Enforcing a rule
+has two halves and only one of them is a refusal: on 2026-10-19 `required` was enforced on
+the create path and it refused creating a SavedSearch, because `partNumber` is declared
+required with no default and lives in `plm_objects.part_number` rather than in the
+revision's extension data. Every refusal check above passed while creating almost anything
+was broken. The probe creates a real object and deletes it again, so it is opt-in.
 """
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -60,6 +69,52 @@ class Checks:
             for c, w, d in bad:
                 print(f"  {c:26} {w}\n      {d}")
         return 0 if not bad else 1
+
+
+def create_probe(c: "Checks", admin: Agent) -> None:
+    """Creates a SavedSearch the way the React client does, then deletes it.
+
+    SavedSearch is the type the regression was found on and a good canary generally: it
+    declares partNumber, revision and status required (the first with no default) and two
+    ordinary required attributes, rootType and definition. A type that creates cleanly
+    here exercises both halves of the required rule - the exempt column-backed attribute
+    and the genuinely required one.
+    """
+    import uuid
+    from datetime import datetime, timezone
+
+    object_id, revision_id = str(uuid.uuid4()), str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    created = False
+    try:
+        admin.put(f"/api/plmobjects/{object_id}", {
+            "plmObjectId": object_id, "typeName": "SavedSearch",
+            "partNumber": f"SRCH-PROBE-{object_id[:8]}",
+            "description": "verify_wave4_live create probe", "createdAt": now, "modifiedAt": now,
+        })
+        created = True
+        admin.put(f"/api/plmobjects/{object_id}/revisions/{revision_id}", {
+            "revisionId": revision_id, "plmObjectId": object_id,
+            "revision": "A", "status": "Draft",
+            # Exactly what cardObjectService.create posts. partNumber is NOT in here,
+            # which is the whole point: it is on the header.
+            "extensionData": json.dumps({
+                "rootType": "Document", "definition": "{}",
+                "summary": "create probe", "color": "#888888", "icon": "search",
+            }),
+            "createdAt": now, "modifiedAt": now,
+        })
+        c.record("NI-regression", "a SavedSearch can be created (partNumber is column-backed)",
+                 True, "created and will be removed")
+    except Refused as exc:
+        c.record("NI-regression", "a SavedSearch can be created (partNumber is column-backed)",
+                 False, f"refused {exc.status}: {str(exc.body)[:260]}")
+    finally:
+        if created:
+            try:
+                admin.delete(f"/api/plmobjects/{object_id}")
+            except Exception:                                          # noqa: BLE001
+                print(f"         NOTE: probe object {object_id} could not be removed - delete it by hand")
 
 
 def main() -> int:
@@ -138,6 +193,10 @@ def main() -> int:
     c.record("NI-00000672", "a Member may inspect their own access",
              not isinstance(own, Refused) and "users" in (own or {}),
              f"got {own if isinstance(own, Refused) else type(own).__name__}")
+
+    if "--create-probe" in sys.argv:
+        print("\n-- Creating, which no refusal check can prove --")
+        create_probe(c, admin)
 
     return c.summary()
 

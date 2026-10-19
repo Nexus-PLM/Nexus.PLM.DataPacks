@@ -120,6 +120,16 @@ class Agent:
     def patch(self, path, body, **kw):
         return self._call("PATCH", path, json=body, **kw)
 
+    def delete(self, path, **kw):
+        """Deletes. Present for verification probes that must clean up after themselves.
+
+        No agent calls this during the scenario: the roles report what they cannot do
+        rather than tidying the dataset, and a delete they were refused is a finding.
+        It exists so a check that has to CREATE something in order to prove creating
+        works can remove it again - see verify_wave4_live.py --create-probe.
+        """
+        return self._call("DELETE", path, **kw)
+
     def log(self, action, detail, **extra):
         """Record what this agent did, so the administrator can read the run back."""
         _append(self.activity_log, {
