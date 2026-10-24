@@ -786,7 +786,10 @@ SERVICE_BULLETINS = [
                retention="Type design - life of type",
                evidence="LSS-ECO-00001, LSS-CERT-QUAL-002, LSS-CERT-COMP-015",
                bulletinType="Mandatory", bulletinCategory="Modification",
-               effectivityRange="NX-200 airframes fitted with LSS-F-00010 revision A "
+               # Revision B, not A: A is Superseded and B is Released, and this
+               # bulletin's own title says "revision B configuration" - so naming A
+               # made the effectivity contradict the title (NI-00000585).
+               effectivityRange="NX-200 airframes fitted with LSS-F-00010 revision B "
                                 "club seats",
                compliancePeriod="Before further flight with passengers in the club "
                                 "seat positions, once the equivalent safety finding is "
@@ -802,6 +805,26 @@ SERVICE_BULLETINS = [
               "issued ahead of the certification position it depends on. This is the "
               "demo's example of a publication correctly held back."),
 ]
+
+
+def _strip_dates_before_issue(bulletins):
+    """
+    A bulletin that has not reached Issued carries no issue or publication date.
+
+    _qbase stamps issueDate on every quality record, which is right for a test report but
+    wrong for a publication: it made a bulletin deliberately held In Review read as issued
+    in any listing, which for a MANDATORY bulletin is the product appearing to lie
+    (NI-00000632). Done as a pass over the list rather than by editing one record, so a
+    bulletin added later in a held state cannot reintroduce it.
+    """
+    for b in bulletins:
+        if b.get("status") != PUB_ISSUED:
+            for key in ("issueDate", "publicationDate"):
+                b.get("attrs", {}).pop(key, None)
+    return bulletins
+
+
+SERVICE_BULLETINS = _strip_dates_before_issue(SERVICE_BULLETINS)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
