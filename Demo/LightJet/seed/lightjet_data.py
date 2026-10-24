@@ -211,7 +211,10 @@ ITEMS_21 = [
                 installationZone="Zone 130 - aft equipment bay",
                 systemInstalled="Environmental control and pressurisation",
                 torqueSpecificationRef="LSS-SPEC-PRC-004",
-                sealantSpecification="LSS-CM-0001",
+                # No sealantSpecification: LSS-CM-0001 is a BOM child line of this
+                # installation, and recording it again as free text gave two places to
+                # state the same fact, independently editable and able to disagree
+                # (NI-00000593). The BOM line is the record.
                 riggingProcedureRef="LSS-SPEC-PRC-011",
                 installationManHours=38,
                 clearanceRequirementMm=12,
