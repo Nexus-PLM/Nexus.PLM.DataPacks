@@ -543,6 +543,65 @@ def test_a_submission_can_be_returned_with_a_finding_not_only_accepted():
             assert B.AUTHORITY_GROUP in who,                 f"{label}/{stem}: the authority cannot raise a finding from {gate}"
 
 
+def _resolved_live_states(stem):
+    """
+    The states a type really offers once the Engine has walked its ancestors.
+
+    Mirrors PlmTypeRegistry.Resolve: walk the chain root-first, merge by name, and let a
+    "disabled" entry remove a state an ancestor declared. Any base this package does not
+    define is an out-of-the-box one, which bottoms out at PLMCoreAbstractModel's four.
+    """
+    by_name = {d["typeName"]: d for d in A_TYPES.ALL_TYPES}
+    chain, seen, cur = [], set(), A.t(stem)
+    while cur and cur not in seen:
+        seen.add(cur)
+        chain.append(cur)
+        cur = (by_name.get(cur) or {}).get("baseTypeName")
+
+    live = {}
+    for name in reversed(chain):
+        if name not in by_name:                       # an out-of-the-box ancestor
+            for s in A.OOTB_STATES:
+                live[s] = True
+            continue
+        for row in (by_name[name].get("lifecycleStates") or []):
+            if not row.get("name"):
+                continue
+            if row.get("disabled"):
+                live.pop(row["name"], None)
+            else:
+                live[row["name"]] = True
+    return set(live)
+
+
+def test_no_type_offers_a_state_inherited_from_a_base_it_does_not_use():
+    """
+    A type offers exactly the ladder it declares - nothing its ancestors happen to declare.
+
+    This is the invariant that was missing, and it cost NI-00000802. Lifecycle states are
+    inherited down the type chain but security models deliberately are not, and
+    security_model() is built from states_of(), i.e. from the ladder the type MEANS to have.
+    So every state that leaked down from an intermediate base arrived with no policy rows -
+    and a state with no rows denies everything to everybody, administrators included, while
+    looking exactly like a state somebody locked down on purpose.
+
+    On NX-200 that was 122 type-state gaps across 20 types: every quality, certificate and
+    publication record offered "In Design Review", "In Stress Review" and an "Airworthiness
+    Sign-off" nobody could use, and a compliance report offered "In Work" on top of its seven
+    board lanes - which is how two revisions of LSS-CERT-COMP-006 came to sit in a lane with
+    no transition out of it.
+
+    The other state tests all read states_of(), the INTENDED ladder, so none of them could
+    see this. This one resolves the chain the way the Engine does.
+    """
+    for label, stem, states, _model in models():
+        offered = _resolved_live_states(stem)
+        extra = offered - set(states)
+        assert not extra, (
+            f"{label}/{stem} offers {sorted(extra)}, which it inherits from a base and has "
+            f"no policy rows for; its own ladder is {states}")
+
+
 def main() -> int:
     tests = [(name, obj) for name, obj in sorted(globals().items())
              if name.startswith("test_") and callable(obj)]
