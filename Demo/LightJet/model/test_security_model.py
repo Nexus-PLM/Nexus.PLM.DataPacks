@@ -646,6 +646,30 @@ def test_a_readiness_condition_only_names_attributes_its_own_type_has():
     assert checked > 0, "no readiness conditions found at all - this test would pass vacuously"
 
 
+def test_a_signature_is_never_put_on_a_field_that_holds_a_value_list():
+    """
+    A signature records WHO acted. A list of values records WHAT was decided.
+
+    I got this wrong and the product let me: faiResult carries the disposition - Accepted,
+    Accepted with deviation, Rejected, Awaiting disposition - and I declared it writeMode
+    Signature to stop the author PATCHing it. POST .../sign stamps the SIGNER'S USERNAME, so
+    the disposition read back as "k.tanaka", which is not a disposition at all. Caught on a
+    throwaway probe before any real record was touched; all seven live first articles still
+    held valid values.
+
+    An lov is the tell: if a field enumerates its legal values, a username is not one of them.
+    The signature belongs on the "approved by" field next to it.
+    """
+    for definition in A_TYPES.ALL_TYPES:
+        for attr in (definition.get("attributes") or []):
+            if attr.get("writeMode") != "Signature":
+                continue
+            assert not attr.get("lov"), (
+                f"{definition['typeName']}.{attr['name']} is a signature AND has a value list "
+                f"{attr.get('lov')} - signing it would write a username, which is not one of "
+                f"those values. Put the signature on the field that records the signer.")
+
+
 def test_a_signature_attribute_is_never_declared_writable():
     """
     An attribute that records who did something must not also be the caller's to type.
@@ -664,28 +688,42 @@ def test_a_signature_attribute_is_never_declared_writable():
                 f"can satisfy it at create time except a caller writing it")
 
 
-def test_a_disposition_signature_cannot_be_given_by_its_own_author():
+def test_a_first_article_cannot_be_approved_by_whoever_raised_it():
     """
-    The AS9102 separation of duties, asserted on the field that carries the decision.
+    The AS9102 separation of duties, asserted on the field that records the approver.
 
-    Both halves matter and the card names both: the forms must be complete, AND the person
-    who raised the record cannot be the one who signs it off.
+    This test said faiResult must be the signature, which was my mistake rather than the
+    model's: signing stamps the signer's username, and faiResult holds the disposition. The
+    signature belongs on faiApprovedBy - see
+    test_a_signature_is_never_put_on_a_field_that_holds_a_value_list, which now makes that
+    class of error impossible to declare.
+
+    Both halves of the card still matter: the forms must be complete, AND the person who
+    raised the report cannot be the one who approves it.
     """
     by_name = {d["typeName"]: d for d in A_TYPES.ALL_TYPES}
     fai = by_name[A.t("FaiReport")]
 
-    result = next(x for x in fai["attributes"] if x["name"] == "faiResult")
-    assert result.get("writeMode") == "Signature", "the disposition must not be plain text"
+    approver = next(x for x in fai["attributes"] if x["name"] == "faiApprovedBy")
+    assert approver.get("writeMode") == "Signature", (
+        "who approved a first article must be recorded by the act of approving it, not typed")
 
-    ready = result.get("readiness") or {}
-    assert ready.get("excludeAuthor") == "true", "the author must not sign their own disposition"
+    ready = approver.get("readiness") or {}
+    assert ready.get("excludeAuthor") == "true", "the author must not approve their own report"
     for form in ("form1Complete", "form2Complete", "form3Complete"):
-        assert form in ready.get("requireTrue", ""), f"{form} must be required before signing"
+        assert form in ready.get("requireTrue", ""), f"{form} must be complete before approval"
 
-    # And the route that raises the approval task carries the same conditions, so the refusal
-    # happens before somebody is asked to judge an empty submission.
+    # The route that raises the approval task carries the same conditions, so an empty
+    # submission is refused before anybody is asked to judge it.
     submit = next(x for x in fai["actions"] if x["name"] == "SubmitFai")
     assert (submit.get("readiness") or {}).get("excludeAuthor") == "true"
+    for form in ("form1Complete", "form2Complete", "form3Complete"):
+        assert form in (submit.get("readiness") or {}).get("requireTrue", "")
+
+    # And the disposition itself is NOT a signature - that is the error above.
+    result = next(x for x in fai["attributes"] if x["name"] == "faiResult")
+    assert result.get("writeMode") != "Signature", (
+        "faiResult holds Accepted / Rejected / ...; signing it would write a username")
 
 
 def main() -> int:
