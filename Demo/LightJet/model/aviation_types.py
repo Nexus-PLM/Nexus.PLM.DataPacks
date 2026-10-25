@@ -1128,21 +1128,29 @@ CONCRETE_DOC_TYPES = [
            # Who signed it off, which is the field a first article is worthless without -
            # dispositionAuthority existed on the nonconformance and nothing equivalent
            # here (NI-00000581).
-           a("faiApprovedBy", "First Article Approved By"),
+           # THE signature on a first article, and the field NI-00000581 said a first
+           # article is worthless without. sign() stamps the signer's own identity, which is
+           # exactly what "approved by" means - and FAI_READY makes it unavailable until all
+           # three AS9102 forms are complete and refuses the person who raised the report.
+           a("faiApprovedBy", "First Article Approved By",
+             write_mode="Signature", readiness=FAI_READY),
            a("faiApprovalDate", "First Article Approval Date", kind="Date"),
            a("serialOrLotNumber", "Serial / Lot Number"),
            a("manufacturingProcessRef", "Manufacturing Process Reference"),
            a("measurementSystemAnalysisRef", "MSA Reference"),
-           # The disposition itself. It was ordinary writable text, so the quality engineer
-           # who raised the report could PATCH it to Accepted with all three AS9102 forms
-           # still false - self-acceptance of an incomplete first article, in one request
-           # (NI-00000488, NI-00000719). As a signature it is not the caller's to write at
-           # all: POST .../sign stamps the signer's own identity, and only once the forms
-           # are complete and only by somebody other than the author.
+           # The disposition OUTCOME. Not a signature, and I had this wrong: writeMode
+           # Signature routes a field through POST .../sign, which stamps the SIGNER'S
+           # USERNAME - so faiResult read back as "k.tanaka", which is not one of
+           # Accepted / Accepted with deviation / Rejected / Awaiting disposition. Caught on
+           # a throwaway probe before any real record was signed; all seven live reports
+           # still hold valid dispositions. A signature records WHO acted; this records WHAT
+           # was decided, and the two are different fields.
+           #
+           # Protecting it is NI-00000488 and NI-00000719 and is not done here: it needs the
+           # attribute PATCH to honour the same readiness vocabulary, which is product code.
            a("faiResult", "Result",
              lov=["Accepted", "Accepted with deviation", "Rejected",
-                  "Awaiting disposition"], default="Awaiting disposition",
-             write_mode="Signature", readiness=FAI_READY),
+                  "Awaiting disposition"], default="Awaiting disposition"),
            a("customerApprovalRequired", "Customer Approval Required", kind="Bool",
              default=False),
            a("customerApprovalDate", "Customer Approval Date", kind="Date"),
