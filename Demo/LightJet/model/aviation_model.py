@@ -120,10 +120,36 @@ PUBLICATION_STATES = [
 ]
 
 
+# Every state name any ladder in this model declares, plus the out-of-the-box four. A type
+# inherits states from its whole ancestor chain, so the set a type must switch off is all of
+# these minus the ones it actually uses - not just the out-of-the-box four.
+ALL_LADDER_STATES = list(dict.fromkeys(
+    OOTB_STATES
+    + [n for ladder in (TYPE_DESIGN_STATES, SUPPORT_STATES, COMPLIANCE_STATES,
+                        QUALITY_STATES, CERTIFICATE_STATES, PUBLICATION_STATES)
+       for n, _ in ladder]))
+
+
 def states(pairs):
-    """Lifecycle rows for a state set, with the unused out-of-the-box states switched off."""
+    """
+    Lifecycle rows for a state set, with every state the type does NOT use switched off.
+
+    Switching off only OOTB_STATES was not enough, and the gap was invisible for months.
+    Lifecycle states are inherited down the type chain but security models deliberately are
+    not (PlmTypeRegistry.Resolve), so a type picked up its intermediate aviation base's ladder
+    as well as its own and wrote policy rows only for its own. The inherited remainder had no
+    rows at all, and a state with no rows denies everything to everybody - administrators
+    included - while looking exactly like a state somebody locked down on purpose.
+
+    On NX-200 that was 121 type-state gaps across 20 types: every quality, certificate and
+    publication record also offered "In Design Review", "In Stress Review" and an
+    "Airworthiness Sign-off" that nobody could use, and a compliance report offered "In Work"
+    from its documents base on top of the seven board lanes it really has.
+
+    Over-disabling is free: removing a state no ancestor declared is a no-op in the registry.
+    """
     names = [n for n, _ in pairs]
-    rows = [{"name": s, "disabled": True} for s in OOTB_STATES if s not in names]
+    rows = [{"name": s, "disabled": True} for s in ALL_LADDER_STATES if s not in names]
     rows += [{"name": n, "color": c, "order": i} for i, (n, c) in enumerate(pairs)]
     return rows
 
