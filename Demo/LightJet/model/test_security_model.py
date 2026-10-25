@@ -720,10 +720,18 @@ def test_a_first_article_cannot_be_approved_by_whoever_raised_it():
     for form in ("form1Complete", "form2Complete", "form3Complete"):
         assert form in (submit.get("readiness") or {}).get("requireTrue", "")
 
-    # And the disposition itself is NOT a signature - that is the error above.
+    # And the disposition itself is NOT a signature - that is the error above - but it is
+    # still not the author's to set with the forms open, which is the card's first sentence.
     result = next(x for x in fai["attributes"] if x["name"] == "faiResult")
     assert result.get("writeMode") != "Signature", (
         "faiResult holds Accepted / Rejected / ...; signing it would write a username")
+
+    outcome = result.get("readiness") or {}
+    assert outcome.get("excludeAuthor") == "true", (
+        "the engineer who raised the report must not set its disposition (NI-00000488)")
+    for form in ("form1Complete", "form2Complete", "form3Complete"):
+        assert form in outcome.get("requireTrue", ""), (
+            f"{form} must be complete before a disposition can be recorded (NI-00000719)")
 
 
 def main() -> int:
