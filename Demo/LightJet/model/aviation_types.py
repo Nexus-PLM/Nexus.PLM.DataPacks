@@ -1138,19 +1138,22 @@ CONCRETE_DOC_TYPES = [
            a("serialOrLotNumber", "Serial / Lot Number"),
            a("manufacturingProcessRef", "Manufacturing Process Reference"),
            a("measurementSystemAnalysisRef", "MSA Reference"),
-           # The disposition OUTCOME. Not a signature, and I had this wrong: writeMode
-           # Signature routes a field through POST .../sign, which stamps the SIGNER'S
-           # USERNAME - so faiResult read back as "k.tanaka", which is not one of
-           # Accepted / Accepted with deviation / Rejected / Awaiting disposition. Caught on
-           # a throwaway probe before any real record was signed; all seven live reports
-           # still hold valid dispositions. A signature records WHO acted; this records WHAT
-           # was decided, and the two are different fields.
+           # The disposition OUTCOME, and an ordinary attribute - NOT a signature. I had that
+           # wrong once: writeMode Signature routes a field through POST .../sign, which
+           # stamps the SIGNER'S USERNAME, so faiResult read back as "k.tanaka", which is not
+           # one of its four allowed values. A signature records WHO acted (faiApprovedBy);
+           # this records WHAT was decided.
            #
-           # Protecting it is NI-00000488 and NI-00000719 and is not done here: it needs the
-           # attribute PATCH to honour the same readiness vocabulary, which is product code.
+           # It still must not be settable by the engineer who raised the report with the
+           # AS9102 forms open, which is NI-00000488 and NI-00000719. That is now expressed
+           # as readiness on the attribute itself and enforced by the attribute PATCH
+           # (Services#878) - the same conditions, without pretending the field is a
+           # signature. Note the Engine judges them against the record as it stands BEFORE
+           # the write, so ticking the three forms in the same request does not satisfy them.
            a("faiResult", "Result",
              lov=["Accepted", "Accepted with deviation", "Rejected",
-                  "Awaiting disposition"], default="Awaiting disposition"),
+                  "Awaiting disposition"], default="Awaiting disposition",
+             readiness=FAI_READY),
            a("customerApprovalRequired", "Customer Approval Required", kind="Bool",
              default=False),
            a("customerApprovalDate", "Customer Approval Date", kind="Date"),
