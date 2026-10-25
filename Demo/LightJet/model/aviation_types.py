@@ -412,12 +412,58 @@ RELEASE_ACTION = action(
     ["In Work", "In Design Review", "In Stress Review", "Airworthiness Sign-off"],
 )
 
+# A part must say what it IS before it can be released (NI-00000573). Classification is not
+# paperwork: the airworthiness class decides what maintenance the part needs, the failure
+# effect decides what substantiation it needs, the export pair decides who may receive the
+# drawing, and the mass feeds the weight and balance an aeroplane is flown on.
+#
+# A SEPARATE constant from RELEASE_ACTION, deliberately, and this is the whole finding of the
+# card. SubmitForRelease is shared by eighteen types - Drawing, Specification, SafetyAssessment,
+# Material, SoftwareItem and the rest, not only parts - while these fields exist only on the
+# five that derive from EngBase. Putting the condition on the shared action would refuse a
+# DRAWING for want of a field a drawing does not have: 101 of 148 live records, measured. And
+# nothing would have reported it, because the Engine reads an absent attribute as UNMET, so the
+# rule would have refused everything, quietly and for ever.
+#
+# WHICH FIELDS, measured across the 47 live parts rather than chosen:
+#     exportClassification         47 of 47 populated   requiring it refuses 0
+#     exportJurisdiction           47 of 47             refuses 0
+#     massStatus                   47 of 47             refuses 0
+#     massKg                       46 of 47             refuses 1
+#     airworthinessClassification  44 of 47             refuses 3
+#     materialSpecification        19 of 47             refuses 28   NOT required
+#     failureEffectClassification  16 of 47             refuses 31   NOT required
+# The five chosen are established practice, so this enforces what the data already does and
+# refuses at most four parts - and those four are genuinely incomplete, which is the point. The
+# two excluded would refuse most of the fleet; requiring them is a modelling decision about how
+# the programme intends to work, not a gap to close quietly, so they are named here rather than
+# imposed.
+PART_RELEASE_READY = {
+    "requirePresent": ",".join([
+        "airworthinessClassification",
+        "exportClassification",
+        "exportJurisdiction",
+        "massKg",
+        "massStatus",
+    ]),
+}
+
+PART_RELEASE_ACTION = action(
+    "SubmitForRelease", "Submit for release",
+    "Starts the type design data release route: design check and stress substantiation in "
+    "parallel, then an Airworthiness and Certification signatory. The part must carry its "
+    "airworthiness and export classification and its mass before it can be submitted.",
+    WF_TYPE_DESIGN,
+    ["In Work", "In Design Review", "In Stress Review", "Airworthiness Sign-off"],
+    readiness=PART_RELEASE_READY,
+)
+
 CONCRETE_ITEM_TYPES = [
     ty("AircraftPart", "Aircraft Part",
        "A structural or mechanical part Light Speed Systems designs - ducting, brackets, "
        "machined fittings, composite panels. The workhorse type of the ATA 21 and ATA 25 "
        "structure.",
-       t("EngBase"), numbering=f"{PREFIX}LssAircraftPart", actions=[RELEASE_ACTION],
+       t("EngBase"), numbering=f"{PREFIX}LssAircraftPart", actions=[PART_RELEASE_ACTION],
        attributes=[
            a("partCategory", "Part Category",
              lov=["Detail part", "Sub-assembly", "Machined", "Sheet metal",
@@ -446,7 +492,7 @@ CONCRETE_ITEM_TYPES = [
        "An electrical or avionics item Light Speed Systems designs or specifies to its own "
        "requirement - control panels, power distribution, antennas, audio equipment. Carries "
        "the DO-160G qualification position and the HIRF and lightning zone it sits in.",
-       t("EngBase"), numbering=f"{PREFIX}LssElectricalPart", actions=[RELEASE_ACTION],
+       t("EngBase"), numbering=f"{PREFIX}LssElectricalPart", actions=[PART_RELEASE_ACTION],
        attributes=[
            a("electricalFunction", "Electrical Function",
              lov=["Power generation", "Power distribution", "Control panel",
@@ -477,7 +523,7 @@ CONCRETE_ITEM_TYPES = [
        "monuments. The ATA 25 workhorse. Flammability and occupant-safety substantiation are "
        "first-class fields because that is what the certification evidence turns on, and "
        "because these are the items a customer reconfigures between aircraft.",
-       t("EngBase"), numbering=f"{PREFIX}LssInteriorPart", actions=[RELEASE_ACTION],
+       t("EngBase"), numbering=f"{PREFIX}LssInteriorPart", actions=[PART_RELEASE_ACTION],
        attributes=[
            a("interiorZone", "Interior Zone",
              lov=["Flight compartment", "Passenger compartment", "Galley", "Lavatory",
@@ -512,7 +558,7 @@ CONCRETE_ITEM_TYPES = [
        "An ATA installation: the item that puts equipment on the aircraft and owns the "
        "interface to it. Where the routing, clamping, torque and sealing definition lives, "
        "and the level at which a system is signed off as installed.",
-       t("EngBase"), numbering=f"{PREFIX}LssInstallation", actions=[RELEASE_ACTION],
+       t("EngBase"), numbering=f"{PREFIX}LssInstallation", actions=[PART_RELEASE_ACTION],
        attributes=[
            a("installationZone", "Aircraft Zone"),
            a("systemInstalled", "System Installed"),
@@ -542,7 +588,7 @@ CONCRETE_ITEM_TYPES = [
     ty("Harness", "Wiring Harness",
        "A wiring harness or loom. Separation category and route zone are held because EWIS "
        "substantiation depends on them, not on the wire list alone.",
-       t("EngBase"), numbering=f"{PREFIX}LssHarness", actions=[RELEASE_ACTION],
+       t("EngBase"), numbering=f"{PREFIX}LssHarness", actions=[PART_RELEASE_ACTION],
        attributes=[
            a("wireSpecification", "Wire Specification"),
            a("gaugeRange", "Gauge Range (AWG)"),
