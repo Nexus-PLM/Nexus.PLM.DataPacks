@@ -734,6 +734,101 @@ def test_a_first_article_cannot_be_approved_by_whoever_raised_it():
             f"{form} must be complete before a disposition can be recorded (NI-00000719)")
 
 
+def _gates_workflows():
+    return [w for w in A.WORKFLOWS if "gates" in (w["displayName"] or "").lower()]
+
+
+def test_every_gated_status_is_a_state_its_types_actually_declare():
+    """
+    A gate naming a status no type has guards nothing, silently.
+
+    The Engine looks a gate up by status NAME, so a typo or a renamed lane produces a gate that
+    is never consulted - and nothing reports it, because an ungated status is the normal case.
+    This is the same shape as the readiness condition that named an attribute its type did not
+    have.
+    """
+    by_name = {d["typeName"]: d for d in A_TYPES.ALL_TYPES}
+
+    def states_of(type_name, guard=0):
+        d = by_name.get(type_name)
+        if d is None or guard > 32:
+            return set()
+        live, disabled = set(), set()
+        for s in (d.get("lifecycleStates") or []):
+            (disabled if s.get("disabled") else live).add(s.get("name"))
+        return (live | states_of(d.get("baseTypeName"), guard + 1)) - disabled
+
+    checked = 0
+    for wf in _gates_workflows():
+        nodes = wf["definition"]["Nodes"]
+        guarded = (nodes[0].get("Parameters") or {}).get("gatesForType", "")
+        type_names = [x.strip() for x in guarded.split(",") if x.strip()]
+        assert type_names, f"{wf['displayName']} names no types, so it guards nothing"
+
+        for node in nodes[1:]:
+            status = node["Title"]
+            for type_name in type_names:
+                checked += 1
+                assert status in states_of(type_name), (
+                    f"{wf['displayName']} gates '{status}' for {type_name}, which does not "
+                    f"declare that state - the gate would never be consulted")
+    assert checked > 0, "no gates found at all - this test would pass vacuously"
+
+
+def test_no_gate_is_addressed_to_nobody():
+    """
+    An empty gate admits nobody but an administrator (Services#828), so it is a locked door.
+
+    That is deliberate - it was the fix for four shipped gate workflows that authorised
+    everybody because every approver list was empty - which makes an unfilled gate here worse
+    than no gate at all: the lane becomes unreachable instead of unguarded.
+    """
+    group_names = {name for name, _description in A.GROUPS}
+
+    for wf in _gates_workflows():
+        for node in wf["definition"]["Nodes"][1:]:
+            approvers = node.get("ApproverGroupIds") or []
+            assert approvers, (
+                f"{wf['displayName']} gates '{node['Title']}' and names nobody, which locks the "
+                f"lane rather than guarding it")
+            for ref in approvers:
+                named = ref.replace("{{GROUP:", "").replace("}}", "")
+                assert named in group_names, (
+                    f"{wf['displayName']} gates '{node['Title']}' to '{named}', which this "
+                    f"package does not ship")
+
+
+def test_a_gates_workflow_never_runs():
+    """
+    Gates are read, not executed. A connection would make one a route somebody could start.
+    """
+    for wf in _gates_workflows():
+        assert wf["definition"]["Connections"] == [], (
+            f"{wf['displayName']} has connections, so it describes a route rather than a gate")
+        assert wf["definition"]["TriggerEvent"] == "Manual", (
+            f"{wf['displayName']} has a trigger, so something could start it")
+        assert not any(n.get("TargetStatus") for n in wf["definition"]["Nodes"]), (
+            f"{wf['displayName']} has a status node, so reading it could move a record")
+
+
+def test_the_lanes_that_stranded_records_are_all_gated():
+    """
+    The four lanes ten records were found stranded in, each now gated for the types that use it.
+
+    Written against the measurement rather than the intention: these are the states that
+    actually held a record with no live workflow instance on NX-200 (NI-00000565 / 579 / 580 /
+    772).
+    """
+    gated = set()
+    for wf in _gates_workflows():
+        for node in wf["definition"]["Nodes"][1:]:
+            gated.add(node["Title"])
+
+    for lane in ("Airworthiness Sign-off", "In Design Review", "In Stress Review",
+                 "Under Review"):
+        assert lane in gated, f"{lane} stranded records and is still enterable by hand"
+
+
 def main() -> int:
     tests = [(name, obj) for name, obj in sorted(globals().items())
              if name.startswith("test_") and callable(obj)]

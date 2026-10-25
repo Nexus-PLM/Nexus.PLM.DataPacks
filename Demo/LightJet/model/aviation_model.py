@@ -670,6 +670,13 @@ def workflow(wf_id, name, display, nodes, connections, description):
 
 # Deterministic ids so a re-export of the same model is byte-identical and a type's
 # action can name the workflow before the workflow file is written.
+# Gates. A gates workflow does not RUN: it is a declaration of who may put a record INTO a
+# status, read by WorkflowGateAuthorizationService on every path that writes one. The Engine
+# finds it by the gatesForType parameter on the Start node, so these need no trigger, no action
+# and no connections.
+WF_GATES_TYPE_DESIGN = "21a20000-0000-4000-a000-000000000001"
+WF_GATES_QUALITY     = "21a20000-0000-4000-a000-000000000002"
+
 WF_TYPE_DESIGN = "21a10000-0000-4000-a000-000000000001"
 WF_FAI = "21a10000-0000-4000-a000-000000000002"
 WF_MRB = "21a10000-0000-4000-a000-000000000003"
@@ -1048,3 +1055,86 @@ WORKFLOWS = [
         "than by a role agent, which is the point of having the invariant.",
     ),
 ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Gates: who may put a record INTO a status
+# ─────────────────────────────────────────────────────────────────────────────
+# The approval lanes were enterable by hand, so a revision could sit in "Airworthiness
+# Sign-off" with no workflow, no task and nobody asked. Ten records on NX-200 were found
+# exactly like that (NI-00000565 / 579 / 580 / 772), and none of them got there through a
+# workflow: not one of the twenty definitions writes an approval state, so every one was
+# hand-set. Returning a record when a workflow fails - which the Engine now does - cannot help
+# a record no workflow ever touched. Gating is what stops it.
+
+
+def _gate(node_id, status, group, row, asks):
+    """One gated status: who may put a record into it.
+
+    Shaped as an Approver node because that is what the Engine reads - the node naming a
+    status is the node that says who may enter it. It never executes; no instance is ever
+    started from a gates workflow.
+    """
+    return _approver(node_id, status, group, row, 0, asks=asks)
+
+
+def gates_workflow(wf_id, name, display, for_types, gated, description):
+    """A gates workflow guarding a set of types.
+
+    `for_types` is written onto the Start node as gatesForType, which is how
+    GatesWorkflowRegistry finds it - declared rather than listed in Engine code, because the
+    types that most need gating are a customer's and must never appear in Engine source.
+
+    An EMPTY gate admits nobody but an administrator (Services#828), so every entry below
+    names a real group. A gate addressed to nobody is not a loose gate, it is a locked door.
+    """
+    nodes = [_node("start", "Start", "Gates", 0, 0,
+                   Parameters={"gatesForType": ",".join(for_types)})]
+    nodes += [_gate("gate%d" % i, status, group, i + 1, asks)
+              for i, (status, group, asks) in enumerate(gated)]
+    return workflow(wf_id, name, display, nodes, [], description)
+
+
+# Each lane names the group whose review it represents, matching the transition rules these
+# same types already declare - so gating does not invent an authority, it enforces the one the
+# model already describes.
+GATED_TYPE_DESIGN = [
+    ("In Design Review", "LSS Design Engineering",
+     "Is the definition complete enough for design review to begin?"),
+    ("In Stress Review", "LSS Stress and Loads",
+     "Is there enough substantiation for stress review to begin?"),
+    ("Airworthiness Sign-off", "LSS Airworthiness and Certification",
+     "Part 21A.263: is this data ready to go in front of a DOA signatory?"),
+]
+
+GATED_QUALITY = [
+    ("Under Review", "LSS Quality Assurance",
+     "Is this record complete enough for the quality review to start?"),
+]
+
+TYPE_DESIGN_GATED_TYPES = [
+    "Drawing", "Icd", "Specification", "QualTestPlan", "QualTestReport", "SafetyAssessment",
+    "SoftwareItem", "SwPlan", "StructuralSubstantiation", "ProcessSpec", "PrjSpecificCertPlan",
+    "AehItem", "EMICAR", "AircraftPart", "ElectricalPart", "Harness", "Installation",
+    "InteriorPart", "Material",
+]
+
+QUALITY_GATED_TYPES = [
+    "FaiReport", "Ncr", "SupplierQualRecord", "InspectionRecord", "Concession",
+    "CorrectiveAction", "CertificationFinding", "InServiceOccurrence",
+    "OperatorComplianceRecord",
+]
+
+WORKFLOWS += [
+    gates_workflow(
+        WF_GATES_TYPE_DESIGN, PREFIX + "LssTypeDesignGates", "Type design gates",
+        [t(s) for s in TYPE_DESIGN_GATED_TYPES], GATED_TYPE_DESIGN,
+        "Who may put type design data into each review lane. Read on every status write; "
+        "nothing here runs."),
+    gates_workflow(
+        WF_GATES_QUALITY, PREFIX + "LssQualityGates", "Quality record gates",
+        [t(s) for s in QUALITY_GATED_TYPES], GATED_QUALITY,
+        "Who may put a quality record into review. Read on every status write; nothing here "
+        "runs."),
+]
+
