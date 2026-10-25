@@ -78,11 +78,46 @@ def ty(stem, display, description, base, abstract=False, attributes=None,
     return row
 
 
-def action(name, display, description, workflow_id, available_in):
-    return {
+def action(name, display, description, workflow_id, available_in, readiness=None):
+    """One action definition.
+
+    `available_in` is the precondition on the STATUS; `readiness` is the precondition on the
+    DATA, in the Engine's shared vocabulary - requireTrue, requireFalse, requirePresent,
+    excludeAuthor. Without the second, the only thing between an obviously incomplete record
+    and its approval route is the lifecycle state (NI-00000573, NI-00000628, NI-00000741).
+
+    Declare `readiness` only on a type whose attributes it NAMES. SubmitForRelease is declared
+    on a shared base and offered by 18 types including Material, Drawing and Specification, so
+    a condition naming airworthinessClassification there would refuse a drawing for want of a
+    field a drawing does not have - 101 of 148 live records measured. A condition is only
+    meaningful where the data it asks about exists.
+    """
+    row = {
         "name": name, "displayName": display, "description": description,
         "workflowDefinitionId": workflow_id, "availableInStatuses": available_in,
     }
+    if readiness:
+        row["readiness"] = readiness
+    return row
+
+
+# An AS9102 first article is incomplete until all three forms are, and the person who raised
+# it is not the person who dispositions it. Both halves are AS9102's, not ours, which is why
+# they are declared rather than coded: a site running a different standard says something
+# different here.
+FAI_READY = {
+    "requireTrue": "form1Complete,form2Complete,form3Complete",
+    "excludeAuthor": "true",
+}
+
+# An operator judges their own compliance against the effectivity and the compliance period,
+# and the weight change feeds the mass properties. A bulletin issued without them is not a
+# bulletin an operator can act on. requirePresent rather than requireTrue because these hold
+# values, not flags - and weightChangeKg is legitimately "0" on most bulletins, which counts
+# as an answer.
+BULLETIN_READY = {
+    "requirePresent": "effectivityRange,compliancePeriod,weightChangeKg",
+}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1050,7 +1085,13 @@ CONCRETE_DOC_TYPES = [
        t("NonTypeDesignDocumentsBase"), numbering=f"{PREFIX}LssQualityRecord",
        actions=[action("SubmitFai", "Submit for approval",
                        "Starts the first article inspection approval route.",
-                       WF_FAI, ["Open", "Under Review"])],
+                       WF_FAI, ["Open", "Under Review"],
+                       # The route's own approver node is titled "Quality review (AS9102
+                       # Forms 1-3 complete)" and checked none of the three flags its title
+                       # named, so the approval task was raised on an empty submission
+                       # (NI-00000741). Checked here, on the action, so the refusal happens
+                       # before a task exists rather than after somebody is asked to judge it.
+                       readiness=FAI_READY)],
        attributes=[
            a("as9102Revision", "AS9102 Revision", lov=["Rev C", "Rev B", "Rev A"],
              default="Rev C"),
@@ -1092,9 +1133,16 @@ CONCRETE_DOC_TYPES = [
            a("serialOrLotNumber", "Serial / Lot Number"),
            a("manufacturingProcessRef", "Manufacturing Process Reference"),
            a("measurementSystemAnalysisRef", "MSA Reference"),
+           # The disposition itself. It was ordinary writable text, so the quality engineer
+           # who raised the report could PATCH it to Accepted with all three AS9102 forms
+           # still false - self-acceptance of an incomplete first article, in one request
+           # (NI-00000488, NI-00000719). As a signature it is not the caller's to write at
+           # all: POST .../sign stamps the signer's own identity, and only once the forms
+           # are complete and only by somebody other than the author.
            a("faiResult", "Result",
              lov=["Accepted", "Accepted with deviation", "Rejected",
-                  "Awaiting disposition"], default="Awaiting disposition"),
+                  "Awaiting disposition"], default="Awaiting disposition",
+             write_mode="Signature", readiness=FAI_READY),
            a("customerApprovalRequired", "Customer Approval Required", kind="Bool",
              default=False),
            a("customerApprovalDate", "Customer Approval Date", kind="Date"),
@@ -1269,7 +1317,11 @@ CONCRETE_DOC_TYPES = [
        lifecycle=states(PUBLICATION_STATES),
        actions=[action("SubmitForIssue", "Submit for issue",
                        "Starts the publication issue route.",
-                       WF_PUBLICATION, ["Draft", "In Review"])],
+                       WF_PUBLICATION, ["Draft", "In Review"],
+                       # A Mandatory bulletin could be issued with no effectivity and no
+                       # compliance period recorded, which is the one thing an operator
+                       # judges their own compliance against (NI-00000628).
+                       readiness=BULLETIN_READY)],
        attributes=[
            a("bulletinType", "Bulletin Type",
              lov=["Mandatory", "Recommended", "Optional", "Alert service bulletin"],

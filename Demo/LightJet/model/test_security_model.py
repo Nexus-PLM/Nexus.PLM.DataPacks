@@ -602,6 +602,92 @@ def test_no_type_offers_a_state_inherited_from_a_base_it_does_not_use():
             f"no policy rows for; its own ladder is {states}")
 
 
+def test_a_readiness_condition_only_names_attributes_its_own_type_has():
+    """
+    A declared condition must be about data the type actually carries.
+
+    This is the trap that stopped SubmitForRelease being configured at all. That action is
+    declared on a shared base and offered by 18 types - Material, Drawing, Specification and
+    the rest, not only parts - so a condition naming airworthinessClassification would refuse
+    a drawing for want of a field a drawing does not have. Measured on NX-200: 101 of 148
+    live records. A condition is only meaningful where the data it asks about exists, and
+    nothing would have told us otherwise: the Engine reads an absent attribute as unmet, so
+    the rule would simply have refused everything, quietly and for ever.
+    """
+    by_name = {d["typeName"]: d for d in A_TYPES.ALL_TYPES}
+
+    def attrs_of(stem_or_type, guard=0):
+        """Every attribute name the type resolves, its ancestors included."""
+        d = by_name.get(stem_or_type)
+        if d is None or guard > 32:
+            return set()
+        own = {x["name"] for x in (d.get("attributes") or [])}
+        return own | attrs_of(d.get("baseTypeName"), guard + 1)
+
+    CONDITIONS = ("requireTrue", "requireFalse", "requirePresent")
+    checked = 0
+    for type_name, definition in sorted(by_name.items()):
+        available = attrs_of(type_name)
+        for act in (definition.get("actions") or []):
+            for key in CONDITIONS:
+                for named in [n.strip() for n in (act.get("readiness") or {}).get(key, "").split(",") if n.strip()]:
+                    checked += 1
+                    assert named in available, (
+                        f"{type_name}.{act['name']} readiness {key} names '{named}', which is "
+                        f"not an attribute of that type - it would refuse every record for ever")
+        for attr in (definition.get("attributes") or []):
+            for key in CONDITIONS:
+                for named in [n.strip() for n in (attr.get("readiness") or {}).get(key, "").split(",") if n.strip()]:
+                    checked += 1
+                    assert named in available, (
+                        f"{type_name}.{attr['name']} readiness {key} names '{named}', which is "
+                        f"not an attribute of that type")
+
+    assert checked > 0, "no readiness conditions found at all - this test would pass vacuously"
+
+
+def test_a_signature_attribute_is_never_declared_writable():
+    """
+    An attribute that records who did something must not also be the caller's to type.
+
+    faiResult carries the first article disposition, and as ordinary text the engineer who
+    raised the report could set it to Accepted themselves (NI-00000488, NI-00000719). The
+    fix is writeMode Signature, which routes it through POST .../sign; a required or
+    defaulted signature would reintroduce a caller-supplied value by another door.
+    """
+    for definition in A_TYPES.ALL_TYPES:
+        for attr in (definition.get("attributes") or []):
+            if attr.get("writeMode") != "Signature":
+                continue
+            assert not attr.get("required"), (
+                f"{definition['typeName']}.{attr['name']} is a signature and required: nothing "
+                f"can satisfy it at create time except a caller writing it")
+
+
+def test_a_disposition_signature_cannot_be_given_by_its_own_author():
+    """
+    The AS9102 separation of duties, asserted on the field that carries the decision.
+
+    Both halves matter and the card names both: the forms must be complete, AND the person
+    who raised the record cannot be the one who signs it off.
+    """
+    by_name = {d["typeName"]: d for d in A_TYPES.ALL_TYPES}
+    fai = by_name[A.t("FaiReport")]
+
+    result = next(x for x in fai["attributes"] if x["name"] == "faiResult")
+    assert result.get("writeMode") == "Signature", "the disposition must not be plain text"
+
+    ready = result.get("readiness") or {}
+    assert ready.get("excludeAuthor") == "true", "the author must not sign their own disposition"
+    for form in ("form1Complete", "form2Complete", "form3Complete"):
+        assert form in ready.get("requireTrue", ""), f"{form} must be required before signing"
+
+    # And the route that raises the approval task carries the same conditions, so the refusal
+    # happens before somebody is asked to judge an empty submission.
+    submit = next(x for x in fai["actions"] if x["name"] == "SubmitFai")
+    assert (submit.get("readiness") or {}).get("excludeAuthor") == "true"
+
+
 def main() -> int:
     tests = [(name, obj) for name, obj in sorted(globals().items())
              if name.startswith("test_") and callable(obj)]
