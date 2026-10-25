@@ -289,7 +289,7 @@ NADCAP_FAMILIES = [
 
 def a(name, display, kind="String", required=False, scope="Revision",
       unit=None, lov=None, default=None, override=False, disabled=False,
-      copy=None):
+      copy=None, write_mode=None, readiness=None):
     """One attribute definition, shaped as the Engine's on-disk type JSON expects it.
 
     `defaultValue` is written as a JSON STRING, never a raw boolean or number. The Engine
@@ -318,6 +318,13 @@ def a(name, display, kind="String", required=False, scope="Revision",
         row["disabled"] = True
     if copy is not None:
         row["copyOnRevision"] = copy
+    # writeMode "Signature" means the attribute is not the caller's to write at all: it is
+    # stamped by POST .../sign with the signer's own identity. readiness is what must hold
+    # before that signature can be given.
+    if write_mode is not None:
+        row["writeMode"] = write_mode
+    if readiness:
+        row["readiness"] = readiness
     if unit is not None:
         row["unit"] = unit
     if lov is not None:
