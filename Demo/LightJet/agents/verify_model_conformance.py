@@ -169,6 +169,21 @@ def deletable(me, type_name):
     return any(str(r.get("deleteScope", "None")) != "None" for r in rows)
 
 
+def placeholder_for(attribute):
+    """A value the declared kind will accept, so only the rule under test can refuse."""
+    lov = attribute.get("lov")
+    if lov:
+        return lov[0]
+    kind = str(attribute.get("type") or "").lower()
+    if kind == "bool":
+        return "true"
+    if kind == "date":
+        return "2026-01-01T00:00:00Z"
+    if kind == "number":
+        return "1"
+    return MARK
+
+
 def make_probe_object(me, type_name, resolved, probes_sent):
     """A throwaway object of this type, or None when one cannot be made."""
     num = me.get("/api/partnumbers/next/%s" % type_name) or {}
@@ -188,12 +203,15 @@ def make_probe_object(me, type_name, resolved, probes_sent):
     probes_sent["objects created"] += 1
 
     # Required attributes have to be satisfied or the revision will not land, and a refusal
-    # then would be the required rule rather than the rule under test.
+    # then would be the required rule rather than the rule under test. Satisfied BY DECLARED
+    # KIND: the first full run filled every required attribute with the marker string, and
+    # the server - correctly - refused "ZZ" as a Bool for User.isActive and as a Date for
+    # occurrenceDate and raisedOn, so three types went unprobed for a reason that had
+    # nothing to do with them.
     ext = {}
     for a in resolved.get("attributes") or []:
         if a.get("required") and not a.get("disabled"):
-            lov = a.get("lov")
-            ext[a["name"]] = lov[0] if lov else MARK
+            ext[a["name"]] = placeholder_for(a)
     rev = {"revisionId": rid, "plmObjectId": oid, "revision": "A",
            "extensionData": json.dumps(ext)}
     try:
