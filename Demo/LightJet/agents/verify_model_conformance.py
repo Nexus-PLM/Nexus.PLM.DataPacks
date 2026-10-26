@@ -127,10 +127,10 @@ def main():
         if not rules:
             continue
 
-        if not deletable(resolved):
+        if not deletable(me, name):
             results.append(Result(name, "-", "-").record(
-                "skipped", "every declared state is settled, so a probe object could never "
-                           "be deleted"))
+                "skipped", "no state grants deleteScope to anyone, so a probe object could "
+                           "never be removed"))
             continue
 
         obj = make_probe_object(me, name, resolved, probes_sent)
@@ -149,17 +149,24 @@ def main():
     report(results, probes_sent)
 
 
-# States that mean "this record is finished", where the platform default grants delete to
-# nobody. A type whose ONLY states are these can never have a probe object removed, so none
-# is created - AuditReport declares just "Released", and the first full run left one behind.
-SETTLED = {"approved", "closed", "complete", "obsolete", "released", "rejected", "voided",
-           "superseded", "issued", "cancelled", "withdrawn"}
+def deletable(me, type_name):
+    """Would a probe object of this type be removable afterwards? ASK, do not guess.
 
+    The first version of this guessed from the state NAME against a list of settled-sounding
+    words. The server will simply say: `statePermissions` on GET /api/types/{t}/security carries
+    a `deleteScope` per state and subject, and a type that grants it to nobody in any state is
+    one to leave alone. AuditReport is the real case - three rows for Released, every one of
+    them deleteScope "None", role Admin included, which is a deliberate seal.
 
-def deletable(resolved):
-    live = [str(s.get("name", "")).lower()
-            for s in (resolved.get("lifecycleStates") or []) if not s.get("disabled")]
-    return any(s not in SETTLED for s in live) if live else True
+    Note the key: `statePermissions`. I first read `statePolicies`, which does not exist; a
+    missing key returns an empty list and reads exactly like "nothing is configured", and that
+    is how I came to report the precise opposite of the truth about this very type.
+    """
+    sec = me.get("/api/types/%s/security" % type_name) or {}
+    rows = sec.get("statePermissions") or []
+    if not rows:
+        return True  # nothing declared: let the probe answer, and cleanup now survives a 403
+    return any(str(r.get("deleteScope", "None")) != "None" for r in rows)
 
 
 def make_probe_object(me, type_name, resolved, probes_sent):
