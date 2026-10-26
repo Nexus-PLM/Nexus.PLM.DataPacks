@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
 import uuid
 from datetime import date, datetime, timezone
@@ -98,6 +99,13 @@ def admin_agent(role: str = "PLM Administrator") -> "Agent":
     """
     secret = os.environ.get("NEXUS_ADMIN_PASSWORD")
     if not secret:
+        # Only prompt when somebody is there to answer. Under a pipe, a scheduler or an
+        # agent's shell, getpass blocks on a terminal that does not exist and the script
+        # looks like it is running - a 40-minute sweep once "ran" without sending a single
+        # request, waiting on this line for a password nobody could see.
+        if not sys.stdin.isatty():
+            raise SystemExit("No administrator password and no terminal to ask on. "
+                             "Set NEXUS_ADMIN_PASSWORD and re-run.")
         import getpass
         secret = getpass.getpass(f"{ADMIN_USERNAME} password: ")
     if not secret:
