@@ -200,7 +200,17 @@ def make_probe_object(me, type_name, resolved, probes_sent):
         me.put("/api/plmobjects/%s/revisions/%s" % (oid, rid), rev)
     except Exception as exc:
         probes_sent["revision create refused"] += 1
-        print("   %-40s no probe revision: %s" % (type_name, str(exc)[:80]))
+        # The server's reason in full: the first run printed 80 characters, which was the
+        # URL and none of the message, so three refusals went unexplained for an evening.
+        print("   %-40s no probe revision: %s" % (type_name, str(exc).split(" -> ", 1)[-1][:300]))
+        # The header was created before the revision was refused. Leaving it behind is a
+        # bare object with no revision on the live site - the first full run left three.
+        # It is not in `created`, so cleanup() never sees it; remove it here, and say so
+        # if that is refused too.
+        try:
+            me.delete("/api/plmobjects/%s" % oid)
+        except Exception as cleanup_exc:
+            print("   %-40s STUCK header %s: %s" % (type_name, pn, str(cleanup_exc)[:90]))
         return None
     return {"oid": oid, "rid": rid, "pn": pn, "type": type_name}
 
