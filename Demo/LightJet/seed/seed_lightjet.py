@@ -769,6 +769,31 @@ def derive_priority(attrs: dict) -> str:
     return "Medium"
 
 
+def put_revision(engine: "Engine", object_id: str, revision_id: str,
+                 label: str, status: str) -> None:
+    """Writes a revision without discarding the attributes it already has.
+
+    An Engine PUT is a whole-record replace, so a body carrying `extensionData: "{}"`
+    clears every attribute on that revision. Revision ids here are deterministic, which is
+    what makes a re-run update rather than duplicate - and it also means a re-run PUTs over
+    a revision the previous run had already filled in.
+
+    The attributes came back seconds later when the attribute stage ran, so the data was
+    not lost; the damage was to the record OF the data. On prod this wrote 6,855 "field set
+    to null" rows into the immutable field audit on 17 Oct, leaving 13,272 set-unset-set
+    pairs - 91% of the entire audit trail - against three real edits. The audit is
+    append-only by design, so those rows are there for good. It also left real holes:
+    6,740 windows where a field was genuinely null, median 35 seconds, longest 16 minutes.
+    """
+    existing = engine.get(f"/api/plmobjects/{object_id}/revisions/{revision_id}")
+    engine.put(f"/api/plmobjects/{object_id}/revisions/{revision_id}", {
+        "revisionId": revision_id, "plmObjectId": object_id,
+        "revision": label, "status": status,
+        # Keep what is there on a re-run; only a revision being created starts empty.
+        "extensionData": (existing or {}).get("extensionData") or "{}",
+    })
+
+
 def deterministic_id(part_number: str) -> str:
     """A stable object id per part number, so a re-run updates rather than duplicates."""
     return str(uuid.uuid5(uuid.NAMESPACE_URL,
@@ -898,11 +923,7 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
         label, status = history[0]
         revision_id = deterministic_id(f"{pn}#{label}")
         revision_ids[(pn, label)] = revision_id
-        engine.put(f"/api/plmobjects/{object_id}/revisions/{revision_id}", {
-            "revisionId": revision_id, "plmObjectId": object_id,
-            "revision": label, "status": status,
-            "extensionData": "{}",
-        })
+        put_revision(engine, object_id, revision_id, label, status)
     say(f"objects: {len(records)} (first revision)")
 
     # ── Requirement parentage ───────────────────────────────────────────────
@@ -962,11 +983,7 @@ def load(engine: Engine, registry: dict[str, dict], verbose: bool = True,
         for label, status in (record.get("history") or [])[1:]:
             revision_id = deterministic_id(f"{pn}#{label}")
             revision_ids[(pn, label)] = revision_id
-            engine.put(f"/api/plmobjects/{ids[pn]}/revisions/{revision_id}", {
-                "revisionId": revision_id, "plmObjectId": ids[pn],
-                "revision": label, "status": status,
-                "extensionData": "{}",
-            })
+            put_revision(engine, ids[pn], revision_id, label, status)
             later += 1
     say(f"later revisions: {later}")
 
