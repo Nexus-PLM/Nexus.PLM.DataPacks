@@ -127,6 +127,12 @@ def main():
         if not rules:
             continue
 
+        if not deletable(resolved):
+            results.append(Result(name, "-", "-").record(
+                "skipped", "every declared state is settled, so a probe object could never "
+                           "be deleted"))
+            continue
+
         obj = make_probe_object(me, name, resolved, probes_sent)
         if obj is None:
             for kind, attr, data in rules:
@@ -141,6 +147,19 @@ def main():
 
     cleanup(me, created)
     report(results, probes_sent)
+
+
+# States that mean "this record is finished", where the platform default grants delete to
+# nobody. A type whose ONLY states are these can never have a probe object removed, so none
+# is created - AuditReport declares just "Released", and the first full run left one behind.
+SETTLED = {"approved", "closed", "complete", "obsolete", "released", "rejected", "voided",
+           "superseded", "issued", "cancelled", "withdrawn"}
+
+
+def deletable(resolved):
+    live = [str(s.get("name", "")).lower()
+            for s in (resolved.get("lifecycleStates") or []) if not s.get("disabled")]
+    return any(s not in SETTLED for s in live) if live else True
 
 
 def make_probe_object(me, type_name, resolved, probes_sent):
@@ -236,7 +255,15 @@ def read_back(me, obj, attr, kind):
 
 
 def cleanup(me, created):
-    removed = kept = 0
+    """Remove every probe object, and NEVER let one refusal strand the rest.
+
+    The first full run died here. A DELETE came back 403 - AuditReport declares one state,
+    Released, which grants delete to nobody, so a probe object of that type can never be
+    removed - and the raised refusal aborted the loop with 93 objects still on the server.
+    A cleanup that stops at the first problem is worse than none, because it leaves the mess
+    AND hides how big it is.
+    """
+    removed = kept = stuck = 0
     for obj in created:
         live = me.get("/api/plmobjects/%s" % obj["oid"]) or {}
         if live.get("description") != MARK:
@@ -244,10 +271,18 @@ def cleanup(me, created):
             print("NOT deleting %s - description is %r, not this script's"
                   % (obj["pn"], live.get("description")))
             continue
-        me.delete("/api/plmobjects/%s" % obj["oid"])
-        removed += 1
+        try:
+            me.delete("/api/plmobjects/%s" % obj["oid"])
+            removed += 1
+        except Exception as exc:
+            stuck += 1
+            print("STUCK: %s (%s) could not be deleted - %s"
+                  % (obj["pn"], obj["type"], str(exc)[:90]))
     print()
-    print("cleanup: %d probe objects deleted, %d left alone" % (removed, kept))
+    print("cleanup: %d deleted, %d left alone, %d STUCK" % (removed, kept, stuck))
+    if stuck:
+        print("         a stuck object is one this sweep created and cannot remove; it is")
+        print("         named above so it can be dealt with deliberately.")
 
 
 def report(results, probes_sent):
