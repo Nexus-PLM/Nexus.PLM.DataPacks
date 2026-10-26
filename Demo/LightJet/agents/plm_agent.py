@@ -36,8 +36,31 @@ import requests
 
 requests.packages.urllib3.disable_warnings()
 
-ENGINE = os.environ.get("NEXUS_ENGINE", "https://192.168.1.47:5000")
-VAULT = os.environ.get("NEXUS_VAULT", "https://192.168.1.47:5200")
+def _endpoint(var, filekey, what, example):
+    """One service's address, from the environment or a git-ignored targets.json beside this file.
+
+    No host is written into this repo. A dev-LAN address as a DEFAULT is the shape the
+    no-hardcoded-endpoints rule exists to stop (NI-00000080): it works silently for whoever
+    wrote it and points at a stranger's network for everyone else, and nothing says so.
+    """
+    value = os.environ.get(var)
+    if not value:
+        try:
+            value = json.loads((Path(__file__).parent / "targets.json")
+                               .read_text(encoding="utf-8-sig")).get(filekey)
+        except FileNotFoundError:
+            value = None
+        except Exception as exc:
+            raise SystemExit("targets.json beside plm_agent.py could not be read: %s" % exc)
+    if not value:
+        raise SystemExit(
+            "No %s endpoint. Set %s, or copy targets.example.json to targets.json beside "
+            "plm_agent.py and fill in %r (e.g. %s)." % (what, var, filekey, example))
+    return str(value).rstrip("/")
+
+
+ENGINE = _endpoint("NEXUS_ENGINE", "engine", "Engine", "https://your-server:5000")
+VAULT = _endpoint("NEXUS_VAULT", "vault", "Vault", "https://your-server:5200")
 PASSWORD = os.environ.get("NEXUS_DEMO_PASSWORD", "Nexus2025!")
 
 # The administrator is a different matter from the nine demo logins: it can change the

@@ -1,0 +1,6 @@
+{
+  "_readme": "Copy to targets.json (git-ignored) and fill in YOUR site. Environment variables NEXUS_ENGINE / NEXUS_VAULT / NEXUS_NOVA override anything here. No host is written into this repo on purpose (NI-00000080): a dev-LAN address as a default works silently for whoever wrote it and points at a stranger's network for everyone else.",
+  "engine": "https://your-server:5000",
+  "vault": "https://your-server:5200",
+  "nova": "https://your-server:5500"
+}
