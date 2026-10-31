@@ -694,30 +694,29 @@ WORKFLOWS = [
     workflow(
         WF_TYPE_DESIGN, f"{PREFIX}LssTypeDesignRelease", "Type design data release",
         [
-            _node("start", "Start", "Submit for release", 2, 0),
-            _approver("design", "Design check", "LSS Design Engineering", 0, 2,
+            _node("start", "Start", "Submit for release", 1, 0),
+            _approver("design", "Design check", "LSS Design Engineering", 1, 2,
                       asks='Is the definition complete and correct, and does it match the drawing? Approving sends it to stress; it does not release it.'),
-            _approver("stress", "Stress substantiation", "LSS Stress and Loads", 2, 2,
+            _approver("stress", "Stress substantiation", "LSS Stress and Loads", 1, 4,
                       asks='Is the structural substantiation complete, with positive margins against the critical load case? Approving sends it to airworthiness; it does not release it.'),
             _approver("airworthiness", "Airworthiness sign-off (DOA privilege)",
-                      "LSS Airworthiness and Certification", 1, 4,
+                      "LSS Airworthiness and Certification", 1, 6,
                       asks='Exercise the Part 21A.263 design organisation privilege: does this data comply with the certification basis? APPROVING RELEASES IT - aeroplanes may be built to it, and the only ways out afterwards are a new revision or supersession.'),
-            _status("release", "Set Released", "Released", 1, 6),
-            _node("end", "End", "End", 1, 8),
+            _status("release", "Set Released", "Released", 1, 8),
+            _node("end", "End", "End", 1, 10),
         ],
         [
             _conn("c1", "start", "design"),
-            _conn("c2", "start", "stress"),
-            _conn("c3", "design", "airworthiness"),
-            _conn("c4", "stress", "airworthiness"),
-            _conn("c5", "airworthiness", "release"),
-            _conn("c6", "release", "end"),
+            _conn("c2", "design", "stress"),
+            _conn("c3", "stress", "airworthiness"),
+            _conn("c4", "airworthiness", "release"),
+            _conn("c5", "release", "end"),
             _conn("r1", "airworthiness", "start", reject=True),
         ],
-        "Releases type design data. Design check and stress substantiation run in parallel; "
-        "both must pass before an Airworthiness and Certification signatory exercises the "
-        "Part 21A.263 design organisation privilege. A rejection returns the item to the "
-        "originator with the reviewer's comment on the audit trail.",
+        "Releases type design data. Design check and stress substantiation run in sequence, "
+        "design first; both must pass before an Airworthiness and Certification signatory "
+        "exercises the Part 21A.263 design organisation privilege. A rejection returns the "
+        "item to the originator with the reviewer's comment on the audit trail.",
     ),
     workflow(
         WF_FAI, f"{PREFIX}LssFaiApproval", "First article inspection approval",
@@ -800,24 +799,23 @@ WORKFLOWS = [
         WF_SUPPLIER, f"{PREFIX}LssSupplierPartApproval", "Supplier part source approval",
         [
             _node("start", "Start", "Request source approval", 1, 0),
-            _approver("supply", "Supply chain review", "LSS Supply Chain", 0, 2,
+            _approver("supply", "Supply chain review", "LSS Supply Chain", 1, 2,
                       asks="Is the supplier's qualification evidence complete - audit, capability, flowdown accepted? Approving sends it to quality."),
             _approver("quality", "Quality approval (AS9100D 8.4)",
-                      "LSS Quality Assurance", 2, 2,
+                      "LSS Quality Assurance", 1, 4,
                       asks='Does this supplier meet the AS9100D 8.4 control requirements for the scope being approved? Approving sends it to engineering for technical acceptance.'),
             _approver("engineering", "Engineering technical acceptance",
-                      "LSS Design Engineering", 1, 4,
+                      "LSS Design Engineering", 1, 6,
                       asks='Can this supplier make the parts to the drawing and the special-process specifications? Approving adds them to the approved source list.'),
-            _status("approve", "Set Active", "Active", 1, 6),
-            _node("end", "End", "End", 1, 8),
+            _status("approve", "Set Active", "Active", 1, 8),
+            _node("end", "End", "End", 1, 10),
         ],
         [
             _conn("c1", "start", "supply"),
-            _conn("c2", "start", "quality"),
-            _conn("c3", "supply", "engineering"),
-            _conn("c4", "quality", "engineering"),
-            _conn("c5", "engineering", "approve"),
-            _conn("c6", "approve", "end"),
+            _conn("c2", "supply", "quality"),
+            _conn("c3", "quality", "engineering"),
+            _conn("c4", "engineering", "approve"),
+            _conn("c5", "approve", "end"),
             _conn("r1", "quality", "start", reject=True),
         ],
         "Approves a source for a bought item. Supply chain confirms the commercial and "
@@ -853,32 +851,31 @@ WORKFLOWS = [
         [
             _node("start", "Start", "Submit for approval", 1, 0),
             _approver("process", "Process owner review",
-                      "LSS Manufacturing Engineering", 0, 2,
+                      "LSS Manufacturing Engineering", 1, 2,
                       asks="Are the parameters, their limits and the qualification evidence "
                            "complete, and is the process capable at those limits? Approving "
                            "sends it to quality."),
             _approver("quality", "Quality approval (NADCAP scope)",
-                      "LSS Quality Assurance", 2, 2,
+                      "LSS Quality Assurance", 1, 4,
                       asks="Is the process under control - operator approval, equipment "
                            "calibration, periodic re-qualification, and NADCAP accreditation "
                            "where the specification requires it? Approving sends it to "
                            "airworthiness."),
             _approver("airworthiness", "Airworthiness approval",
-                      "LSS Airworthiness and Certification", 1, 4,
+                      "LSS Airworthiness and Certification", 1, 6,
                       asks="A special process is one whose result cannot be verified by "
                            "inspecting the part afterwards, so releasing it accepts the "
                            "parameters AS the evidence of conformity. Does that hold? "
                            "APPROVING RELEASES IT."),
-            _status("release", "Set Released", "Released", 1, 6),
-            _node("end", "End", "End", 1, 8),
+            _status("release", "Set Released", "Released", 1, 8),
+            _node("end", "End", "End", 1, 10),
         ],
         [
             _conn("c1", "start", "process"),
-            _conn("c2", "start", "quality"),
-            _conn("c3", "process", "airworthiness"),
-            _conn("c4", "quality", "airworthiness"),
-            _conn("c5", "airworthiness", "release"),
-            _conn("c6", "release", "end"),
+            _conn("c2", "process", "quality"),
+            _conn("c3", "quality", "airworthiness"),
+            _conn("c4", "airworthiness", "release"),
+            _conn("c5", "release", "end"),
             _conn("r1", "airworthiness", "start", reject=True),
         ],
         "Approves a special process specification. The manufacturing engineer could not "
@@ -895,32 +892,33 @@ WORKFLOWS = [
         [
             _node("start", "Start", "Submit substantiation", 1, 0),
             _approver("check", "Independent stress check",
-                      "LSS Stress and Loads", 0, 2,
+                      "LSS Stress and Loads", 1, 2,
                       asks="Independently check the analysis: method, load cases, "
                            "allowables basis and the arithmetic. This is a CHECK, not a "
                            "review - it must be someone other than the author, and the "
-                           "minimum margin is the number to confirm."),
+                           "minimum margin is the number to confirm. Approving sends it to "
+                           "design acceptance; it does not release it."),
             _approver("design", "Design acceptance",
-                      "LSS Design Engineering", 2, 2,
+                      "LSS Design Engineering", 1, 4,
                       asks="Does the substantiated configuration match the design as "
                            "defined, and can any inspection threshold or life limit it "
-                           "imposes actually be met in service?"),
+                           "imposes actually be met in service? Approving sends it to "
+                           "airworthiness; it does not release it."),
             _approver("airworthiness", "Airworthiness sign-off (DOA privilege)",
-                      "LSS Airworthiness and Certification", 1, 4,
+                      "LSS Airworthiness and Certification", 1, 6,
                       asks="Accept this as compliance evidence for the structural "
                            "paragraphs of the certification basis. APPROVING RELEASES IT, "
                            "and any inspection threshold or life limit it carries has to "
                            "reach the airworthiness limitations section."),
-            _status("release", "Set Released", "Released", 1, 6),
-            _node("end", "End", "End", 1, 8),
+            _status("release", "Set Released", "Released", 1, 8),
+            _node("end", "End", "End", 1, 10),
         ],
         [
             _conn("c1", "start", "check"),
-            _conn("c2", "start", "design"),
-            _conn("c3", "check", "airworthiness"),
-            _conn("c4", "design", "airworthiness"),
-            _conn("c5", "airworthiness", "release"),
-            _conn("c6", "release", "end"),
+            _conn("c2", "check", "design"),
+            _conn("c3", "design", "airworthiness"),
+            _conn("c4", "airworthiness", "release"),
+            _conn("c5", "release", "end"),
             _conn("r1", "airworthiness", "start", reject=True),
         ],
         "Releases a structural substantiation. The independent check comes first and is "
@@ -933,30 +931,31 @@ WORKFLOWS = [
         [
             _node("start", "Start", "Raise concession", 1, 0),
             _approver("engineering", "Engineering justification",
-                      "LSS Design Engineering", 0, 2,
+                      "LSS Design Engineering", 1, 2,
                       asks="Is the departure technically acceptable, and is the "
                            "justification one that would survive being read back in two "
-                           "years? State the effect on fit, form, function and life."),
+                           "years? State the effect on fit, form, function and life. "
+                           "Approving sends it to quality; it does not authorise it."),
             _approver("quality", "Quality control of the concession",
-                      "LSS Quality Assurance", 2, 2,
+                      "LSS Quality Assurance", 1, 4,
                       asks="Are the quantity, serial range and expiry bounded and "
                            "enforceable? An open-ended concession is a finding in any "
-                           "audit."),
+                           "audit. Approving sends it to airworthiness; it does not "
+                           "authorise it."),
             _approver("airworthiness", "Airworthiness concurrence",
-                      "LSS Airworthiness and Certification", 1, 4,
+                      "LSS Airworthiness and Certification", 1, 6,
                       asks="Does the aeroplane remain compliant with the certification "
                            "basis with this departure embodied? APPROVING AUTHORISES THE "
                            "DEPARTURE for the stated effectivity."),
-            _status("approve", "Set Dispositioned", "Dispositioned", 1, 6),
-            _node("end", "End", "End", 1, 8),
+            _status("approve", "Set Dispositioned", "Dispositioned", 1, 8),
+            _node("end", "End", "End", 1, 10),
         ],
         [
             _conn("c1", "start", "engineering"),
-            _conn("c2", "start", "quality"),
-            _conn("c3", "engineering", "airworthiness"),
-            _conn("c4", "quality", "airworthiness"),
-            _conn("c5", "airworthiness", "approve"),
-            _conn("c6", "approve", "end"),
+            _conn("c2", "engineering", "quality"),
+            _conn("c3", "quality", "airworthiness"),
+            _conn("c4", "airworthiness", "approve"),
+            _conn("c5", "approve", "end"),
             _conn("r1", "airworthiness", "start", reject=True),
         ],
         "Authorises a deviation or waiver. It was two values in a nonconformance's "
