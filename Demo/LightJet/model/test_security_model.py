@@ -472,6 +472,25 @@ def test_every_approval_gate_states_what_it_is_asking():
                 f"{workflow['name']}: gate {node['Title']!r} does not say what it is asking"
 
 
+def test_no_node_fans_out():
+    """The engine follows the FIRST connection out of a node on each path and drops the rest,
+    so a route drawn as start -> {design, stress} -> airworthiness ran the design check and
+    never the stress review while the picture showed both - a part reached Released with no
+    stress substantiation at all. Five routes here were drawn that way. The server now refuses
+    a definition that fans out, and a route that wants two reviews chains them (NI-00000851).
+    """
+    for wf in A.WORKFLOWS:
+        by_path: dict[tuple[str, bool], list[str]] = {}
+        for conn in wf["definition"]["Connections"]:
+            key = (conn["SourceNodeId"], conn["IsRejectPath"])
+            by_path.setdefault(key, []).append(conn["TargetNodeId"])
+        for (source, reject), targets in by_path.items():
+            path = "reject" if reject else "forward"
+            assert len(targets) == 1, (
+                f"{wf['displayName']}: {source!r} has {len(targets)} {path} connections "
+                f"({', '.join(targets)}); the engine would run only {targets[0]!r}")
+
+
 def test_no_approval_gate_is_addressed_to_nobody():
     """An approver node naming no user, group or role creates no task at all, so the
     workflow waits for ever on work nobody was given. The out-of-the-box change gates ship
