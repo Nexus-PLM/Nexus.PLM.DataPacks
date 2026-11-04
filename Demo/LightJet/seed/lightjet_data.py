@@ -41,8 +41,8 @@ C_PLANNED, C_METHOD, C_EVIDENCE, C_SUBMITTED, C_ACCEPTED, C_FINDING, C_CLOSED = 
     "Planned", "Method Agreed", "Evidence in Work", "Submitted", "Accepted",
     "Finding Open", "Closed")
 P_DRAFT, P_REVIEW, P_ISSUED = "Draft", "In Review", "Issued"
-R_DRAFT, R_REVIEW, R_APPROVED, R_IMPL, R_VERIFIED = (
-    "Draft", "In Review", "Approved", "Implemented", "Verified")
+R_DRAFT, R_REVIEW, R_APPROVED, R_IMPL, R_CLOSED = (
+    "Draft", "In Review", "Approved", "Implemented", "Closed")
 SUP_ACTIVE, SUP_DRAFT, SUP_REVIEW = "Active", "Draft", "In Review"
 
 

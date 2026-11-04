@@ -93,6 +93,21 @@ COMPLIANCE_STATES = [
     ("Closed",           "#2F6F4F"),
 ]
 
+# The outcome a compliance item implies for the requirement it demonstrates, keyed by the
+# item's complianceStatus (NI-00000619). A requirement carries its own verificationStatus
+# and nothing used to tie the two together, so a requirement could read "Verified" while its
+# compliance report read "Not compliant". This is the explicit mapping; anything not listed
+# means the demonstration is still going on.
+COMPLIANCE_TO_VERIFICATION = {
+    "Compliant":                  "Verified",
+    "Compliant with limitation":  "Verified",
+    "Equivalent safety finding":  "Verified",
+    "Special condition":          "Verified",
+    "Not compliant":              "Verification failed",
+    "Not applicable":             "Verification waived",
+}
+VERIFICATION_IN_PROGRESS = "In verification"
+
 # A quality record: raised, dispositioned, closed. Shared by FAI, NCR and supplier records.
 QUALITY_STATES = [
     ("Open",           "#607080"),
@@ -130,7 +145,7 @@ ALL_LADDER_STATES = list(dict.fromkeys(
        for n, _ in ladder]))
 
 
-def states(pairs):
+def states(pairs, also_disable=()):
     """
     Lifecycle rows for a state set, with every state the type does NOT use switched off.
 
@@ -147,9 +162,16 @@ def states(pairs):
     from its documents base on top of the seven board lanes it really has.
 
     Over-disabling is free: removing a state no ancestor declared is a no-op in the registry.
+
+    `also_disable` names a state an ancestor outside this model still declares, which the
+    ladders above cannot know about. The requirement ladder uses it for "Verified": the
+    out-of-the-box RequirementsBase declares it, so dropping it from the list alone would
+    leave it inherited and offered (NI-00000619).
     """
     names = [n for n, _ in pairs]
-    rows = [{"name": s, "disabled": True} for s in ALL_LADDER_STATES if s not in names]
+    rows = [{"name": s, "disabled": True}
+            for s in list(ALL_LADDER_STATES) + [x for x in also_disable if x not in ALL_LADDER_STATES]
+            if s not in names]
     rows += [{"name": n, "color": c, "order": i} for i, (n, c) in enumerate(pairs)]
     return rows
 
