@@ -848,6 +848,64 @@ def test_the_lanes_that_stranded_records_are_all_gated():
         assert lane in gated, f"{lane} stranded records and is still enterable by hand"
 
 
+REQUIREMENT_STEMS = ("AircraftRequirement", "OperatorRequirement", "SystemRequirement",
+                     "SubsystemRequirement", "ComponentRequirement", "CertRequirement")
+
+
+def test_verified_is_an_outcome_and_never_a_requirement_lifecycle_state():
+    """
+    "Verified" lives on verificationStatus only (NI-00000619).
+
+    It was also the last stage of the requirement lifecycle, so a requirement could be
+    lifecycle Verified with verificationStatus "Verification failed" and nothing flagged it.
+    The out-of-the-box RequirementsBase still declares the state, so it has to be switched
+    off on every requirement type - being absent from the list is not enough.
+    """
+    for stem in REQUIREMENT_STEMS:
+        live = B.states_of(stem)
+        assert live is not None, f"{stem} has no resolved lifecycle"
+        assert "Verified" not in live, f"{stem} still offers lifecycle state 'Verified'"
+        assert "Closed" in live, f"{stem} has no 'Closed' state to take its place"
+
+
+def test_a_closed_requirement_is_reached_from_implemented_and_never_walked_back():
+    """Implemented -> Closed exists; nothing leaves Closed; the old Verified routes are gone."""
+    for stem in REQUIREMENT_STEMS:
+        rules = B.transition_rules(B.states_of(stem), None)
+        pairs = {(r["fromState"], r["toState"]) for r in rules}
+        assert ("Implemented", "Closed") in pairs, f"{stem}: no route into Closed"
+        assert not [p for p in pairs if p[0] == "Closed"], f"{stem}: Closed is walked back"
+        assert not [p for p in pairs if "Verified" in p], f"{stem}: a rule still names Verified"
+
+
+def test_the_trace_check_catches_a_verified_requirement_with_a_failed_item():
+    """
+    Proves the contradiction check on a known positive before trusting its silence.
+
+    A check that finds nothing may be broken rather than reporting good news.
+    """
+    import seed_lightjet as S
+    by_pn = {
+        "R-1": {"attrs": {"verificationStatus": "Verified", "complianceItemRef": "C-1"}},
+        "R-2": {"attrs": {"verificationStatus": "Verified", "complianceItemRef": "C-2"}},
+        "R-3": {"attrs": {"verificationStatus": "Verification failed",
+                          "complianceItemRef": "C-2"}},
+        "C-1": {"attrs": {"complianceStatus": "Not compliant"}},
+        "C-2": {"attrs": {"complianceStatus": "Compliant with limitation"}},
+    }
+    problems = S.trace_contradictions(by_pn)
+    assert any(p.startswith("R-1:") for p in problems), problems
+    assert any(p.startswith("R-3:") for p in problems), problems
+    assert not any(p.startswith("R-2:") for p in problems), problems
+
+
+def test_the_seed_requirements_do_not_contradict_their_compliance_items():
+    """The shipped dataset passes its own check."""
+    import seed_lightjet as S
+    by_pn = {r["pn"]: r for r in S.all_records()}
+    assert S.trace_contradictions(by_pn) == []
+
+
 def main() -> int:
     tests = [(name, obj) for name, obj in sorted(globals().items())
              if name.startswith("test_") and callable(obj)]

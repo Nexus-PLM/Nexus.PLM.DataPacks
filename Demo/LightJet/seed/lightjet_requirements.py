@@ -26,8 +26,8 @@ Two things here are the point of the whole demo for a certification audience:
 
 from lightjet_data import ATA21, ATA23, ATA25, PROGRAMME, ROOT_FOLDER, T
 
-R_DRAFT, R_REVIEW, R_APPROVED, R_IMPL, R_VERIFIED = (
-    "Draft", "In Review", "Approved", "Implemented", "Verified")
+R_DRAFT, R_REVIEW, R_APPROVED, R_IMPL, R_CLOSED = (
+    "Draft", "In Review", "Approved", "Implemented", "Closed")
 
 FREQ = f"{ROOT_FOLDER}/Certification/Certification Programme"
 
@@ -365,7 +365,7 @@ REQUIREMENTS = [
         "The communications system shall provide two VHF transceivers on independent "
         "power sources and independent antennas, with 8.33 kHz channel spacing, plus one "
         "satellite voice terminal.",
-        R_VERIFIED,
+        R_CLOSED,
         {"requirementType": "Functional", "priority": "Critical",
          "rationale": "Allocation of the aircraft communication requirement. Independence "
                       "of power and antenna is what makes the two means genuinely "
@@ -494,7 +494,7 @@ REQUIREMENTS = [
         "The audio control panel shall allow each crew station independently to select "
         "transmit and receive on either VHF transceiver or the satellite terminal, and "
         "shall fail to a direct-connect mode on loss of panel power.",
-        R_VERIFIED,
+        R_CLOSED,
         {"requirementType": "Functional", "priority": "High",
          "rationale": "The fail-to-direct-connect behaviour is what keeps the two "
                       "independent transceivers independent when the panel between them "
@@ -560,7 +560,7 @@ REQUIREMENTS = [
         "ETSO authorisation, developed to design assurance level B, qualified to DO-160G "
         "for the categories of the installation, and shall provide automatic changeover "
         "and a manual crew mode.",
-        R_VERIFIED,
+        R_CLOSED,
         {"requirementType": "Interface", "priority": "Critical",
          "rationale": "This requirement is the procurement specification for the "
                       "controller. It is written at component level so it can be flowed "
@@ -586,7 +586,7 @@ REQUIREMENTS = [
         "0.62 bar differential plus or minus 0.02 bar, and shall provide the flow "
         "capacity to limit differential pressure with the outflow valve failed closed and "
         "no electrical power available.",
-        R_VERIFIED,
+        R_CLOSED,
         {"requirementType": "Physical", "priority": "Critical",
          "rationale": "Flows down the derived requirement for an independent means of "
                       "overpressure protection. Wholly mechanical is the point: anything "
@@ -610,7 +610,7 @@ REQUIREMENTS = [
         "Each VHF transceiver shall hold a TSO authorisation, support 8.33 kHz channel "
         "spacing, be developed to design assurance level C, and be qualified to DO-160G "
         "for the forward avionics bay environment.",
-        R_VERIFIED,
+        R_CLOSED,
         {"requirementType": "Interface", "priority": "Critical",
          "rationale": "Procurement specification for the transceiver.",
          "source": "LSS-REQ-SYS-0003",

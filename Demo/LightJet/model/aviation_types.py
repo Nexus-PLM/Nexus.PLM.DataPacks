@@ -1526,14 +1526,21 @@ REQ_AVIATION_ATTRS = [
            "Awaiting authority position"], default="Stable"),
 ]
 
+# The lifecycle is the PROCESS (where the work is); verificationStatus is the OUTCOME (what
+# was found). The last process state used to be called "Verified", which made the same word
+# an outcome on one axis and a stage on the other, and nothing stopped them disagreeing: a
+# requirement could be lifecycle Verified with verificationStatus "Verification failed"
+# (NI-00000619). "Verified" now exists only as an outcome; the process ends at "Closed".
+# The out-of-the-box RequirementsBase still declares "Verified", so it is switched off
+# explicitly rather than merely left out.
 REQ_LIFECYCLE = states([
     ("Draft",       "#607080"),
     ("In Review",   "#4A6FA5"),
     ("Approved",    "#2E8B57"),
     ("Implemented", "#6A5ACD"),
-    ("Verified",    "#2F6F4F"),
+    ("Closed",      "#2F6F4F"),
     ("Rejected",    "#8B2828"),
-])
+], also_disable=["Verified"])
 
 CONCRETE_REQ_TYPES = [
     ty("AircraftRequirement", "Aircraft Requirement",

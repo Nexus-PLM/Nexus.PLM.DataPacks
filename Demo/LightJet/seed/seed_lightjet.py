@@ -53,7 +53,9 @@ import lightjet_quality as QA                                        # noqa: E40
 import lightjet_requirements as REQ                                  # noqa: E402
 import lightjet_structure as ST                                      # noqa: E402
 import lightjet_value_attrs as VA                                    # noqa: E402
-from aviation_model import BASE, GROUPS, NUMBERING                    # noqa: E402
+from aviation_model import (                                          # noqa: E402
+    BASE, COMPLIANCE_TO_VERIFICATION, GROUPS, NUMBERING, VERIFICATION_IN_PROGRESS,
+)
 from aviation_types import ALL_TYPES                                  # noqa: E402
 from build_customization import classification_folders               # noqa: E402
 
@@ -298,6 +300,43 @@ def change_records() -> list[dict]:
 # ─────────────────────────────────────────────────────────────────────────────
 # Validation
 # ─────────────────────────────────────────────────────────────────────────────
+
+def trace_contradictions(by_pn: dict[str, dict]) -> list[str]:
+    """Requirements whose verificationStatus contradicts the compliance items they cite.
+
+    A requirement and its compliance item each carry an outcome, and nothing but this check
+    ties them (NI-00000619). The item's complianceStatus is mapped to the outcome it implies
+    by COMPLIANCE_TO_VERIFICATION. Only the two terminal claims are contradicted: a
+    requirement may be "Verified" only if every item it cites implies Verified, and may be
+    "Verification failed" only if at least one does. The rest is the process still running.
+    """
+    problems: list[str] = []
+    for pn, record in by_pn.items():
+        attrs = record.get("attrs", {})
+        claimed = attrs.get("verificationStatus")
+        cited = [c.strip() for c in str(attrs.get("complianceItemRef", "")).split(",")
+                 if c.strip()]
+        if claimed not in ("Verified", "Verification failed") or not cited:
+            continue
+        implied = []
+        for item_pn in cited:
+            item = by_pn.get(item_pn)
+            if item is None:
+                continue          # a dangling reference is reported by the link checks
+            status = item.get("attrs", {}).get("complianceStatus")
+            implied.append(COMPLIANCE_TO_VERIFICATION.get(status, VERIFICATION_IN_PROGRESS))
+        if not implied:
+            continue
+        if claimed == "Verified" and any(o != "Verified" for o in implied):
+            problems.append(
+                f"{pn}: verificationStatus is 'Verified' but the compliance items it cites "
+                f"imply {', '.join(sorted(set(implied)))} ({', '.join(cited)}).")
+        if claimed == "Verification failed" and "Verification failed" not in implied:
+            problems.append(
+                f"{pn}: verificationStatus is 'Verification failed' but none of the "
+                f"compliance items it cites ({', '.join(cited)}) is Not compliant.")
+    return problems
+
 
 def validate(registry: dict[str, dict], notes: list[str] | None = None) -> list[str]:
     problems: list[str] = []
@@ -550,6 +589,9 @@ def validate(registry: dict[str, dict], notes: list[str] | None = None) -> list[
                 if group not in group_names:
                     problems.append(f"{change['pn']}: distribution group '{group}' is "
                                     f"not in the packaged group list.")
+
+    # Outcome axes: a requirement must not claim what its compliance items contradict.
+    problems.extend(trace_contradictions(by_pn))
 
     # Users and groups.
     for username, _display, _role, groups in D.USERS:
